@@ -9,8 +9,9 @@ import uuid
 import logging
 import bcrypt
 import jwt
+from collections import defaultdict
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List, Literal
+from typing import Optional, Literal
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -110,6 +111,15 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class CreateBusinessRequest(BaseModel):
+    business_name: str = Field(min_length=1)
+    business_type: str = "salon"
+    address: str = ""
+    city: str = ""
+    state: str = Field(min_length=1)
+    pincode: str = Field(min_length=3, max_length=12)
+
+
 class UpdateBusinessRequest(BaseModel):
     business_name: Optional[str] = None
     business_type: Optional[str] = None
@@ -133,7 +143,7 @@ class WalkInRequest(BaseModel):
     customer_phone: str = ""
 
 
-StatusT = Literal["waiting", "serving", "completed", "cancelled"]
+StatusT = Literal["waiting", "serving", "completed", "cancelled", "no_show"]
 
 
 class UpdateStatusRequest(BaseModel):
@@ -168,23 +178,53 @@ def public_ticket(t: dict) -> dict:
         "booking_type": t.get("booking_type", "remote"),
         "chair_number": t.get("chair_number"),
         "created_at": t.get("created_at"),
+        "served_at": t.get("served_at"),
         "finished_at": t.get("finished_at"),
     }
 
 
 async def next_token_number(business_id: str) -> int:
-    # Reset token daily? Keep simple: all-time max + 1
     last = await db.queue.find(
         {"business_id": business_id}, {"_id": 0, "token_number": 1}
     ).sort("token_number", -1).limit(1).to_list(1)
     return (last[0]["token_number"] + 1) if last else 1
 
 
-async def get_owner_business(user_id: str) -> dict:
-    b = await db.businesses.find_one({"owner_user_id": user_id}, {"_id": 0})
+async def owned_business_or_404(user_id: str, business_id: str) -> dict:
+    b = await db.businesses.find_one({"id": business_id, "owner_user_id": user_id}, {"_id": 0})
     if not b:
-        raise HTTPException(status_code=404, detail="No business found for this user")
+        raise HTTPException(status_code=404, detail="Outlet not found")
     return b
+
+
+async def list_user_businesses(user_id: str) -> list:
+    docs = (
+        await db.businesses.find({"owner_user_id": user_id}, {"_id": 0})
+        .sort("created_at", 1)
+        .to_list(1000)
+    )
+    return [public_business(b) for b in docs]
+
+
+async def create_business_doc(user_id: str, body: CreateBusinessRequest) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    business = {
+        "id": str(uuid.uuid4()),
+        "owner_user_id": user_id,
+        "business_name": body.business_name,
+        "business_type": body.business_type,
+        "address": body.address,
+        "city": body.city,
+        "state": body.state,
+        "pincode": body.pincode,
+        "total_chairs": 1,
+        "token_limit": 100,
+        "is_online": True,
+        "station_label": "Station",
+        "created_at": now,
+    }
+    await db.businesses.insert_one(business)
+    return business
 
 
 # ----------------- Auth Endpoints -----------------
@@ -207,29 +247,20 @@ async def register(body: RegisterRequest, response: Response):
     }
     await db.users.insert_one(user_doc)
 
-    business_id = str(uuid.uuid4())
-    business = {
-        "id": business_id,
-        "owner_user_id": user_id,
-        "business_name": body.business_name,
-        "business_type": body.business_type,
-        "address": body.address,
-        "city": body.city,
-        "state": body.state,
-        "pincode": body.pincode,
-        "total_chairs": 1,
-        "token_limit": 100,
-        "is_online": True,
-        "station_label": "Station",
-        "created_at": now,
-    }
-    await db.businesses.insert_one(business)
+    business = await create_business_doc(user_id, CreateBusinessRequest(
+        business_name=body.business_name,
+        business_type=body.business_type,
+        address=body.address,
+        city=body.city,
+        state=body.state,
+        pincode=body.pincode,
+    ))
 
     token = create_access_token(user_id, email)
     set_auth_cookie(response, token)
     return {
         "user": {"id": user_id, "email": email, "name": body.owner_name, "role": "owner"},
-        "business": public_business(business),
+        "businesses": [public_business(business)],
         "access_token": token,
     }
 
@@ -243,10 +274,10 @@ async def login(body: LoginRequest, response: Response):
 
     token = create_access_token(user["id"], email)
     set_auth_cookie(response, token)
-    business = await db.businesses.find_one({"owner_user_id": user["id"]}, {"_id": 0})
+    businesses = await list_user_businesses(user["id"])
     return {
         "user": {"id": user["id"], "email": email, "name": user.get("name", ""), "role": user.get("role", "owner")},
-        "business": public_business(business) if business else None,
+        "businesses": businesses,
         "access_token": token,
     }
 
@@ -259,28 +290,47 @@ async def logout(response: Response):
 
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
-    business = await db.businesses.find_one({"owner_user_id": user["id"]}, {"_id": 0})
+    businesses = await list_user_businesses(user["id"])
     return {
         "user": {"id": user["id"], "email": user["email"], "name": user.get("name", ""), "role": user.get("role", "owner")},
-        "business": public_business(business) if business else None,
+        "businesses": businesses,
     }
 
 
 # ----------------- Business (owner) -----------------
-@api.get("/business/me")
-async def business_me(user: dict = Depends(get_current_user)):
-    business = await get_owner_business(user["id"])
+@api.get("/business")
+async def my_businesses(user: dict = Depends(get_current_user)):
+    return await list_user_businesses(user["id"])
+
+
+@api.post("/business")
+async def create_outlet(body: CreateBusinessRequest, user: dict = Depends(get_current_user)):
+    business = await create_business_doc(user["id"], body)
     return public_business(business)
 
 
-@api.patch("/business/me")
-async def update_business(body: UpdateBusinessRequest, user: dict = Depends(get_current_user)):
-    business = await get_owner_business(user["id"])
+@api.get("/business/{business_id}")
+async def get_outlet(business_id: str, user: dict = Depends(get_current_user)):
+    business = await owned_business_or_404(user["id"], business_id)
+    return public_business(business)
+
+
+@api.patch("/business/{business_id}")
+async def update_outlet(business_id: str, body: UpdateBusinessRequest, user: dict = Depends(get_current_user)):
+    business = await owned_business_or_404(user["id"], business_id)
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if updates:
         await db.businesses.update_one({"id": business["id"]}, {"$set": updates})
     updated = await db.businesses.find_one({"id": business["id"]}, {"_id": 0})
     return public_business(updated)
+
+
+@api.delete("/business/{business_id}")
+async def delete_outlet(business_id: str, user: dict = Depends(get_current_user)):
+    await owned_business_or_404(user["id"], business_id)
+    await db.businesses.delete_one({"id": business_id})
+    await db.queue.delete_many({"business_id": business_id})
+    return {"ok": True}
 
 
 # ----------------- Public Customer Endpoints -----------------
@@ -334,6 +384,7 @@ async def public_join(business_id: str, body: JoinQueueRequest):
         "booking_type": "remote",
         "chair_number": None,
         "created_at": now,
+        "served_at": None,
         "finished_at": None,
     }
     await db.queue.insert_one(ticket)
@@ -345,7 +396,6 @@ async def public_ticket_status(ticket_id: str):
     t = await db.queue.find_one({"id": ticket_id}, {"_id": 0})
     if not t:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    # Compute position among waiting tickets (by token_number ascending)
     position = 0
     if t["status"] == "waiting":
         position = await db.queue.count_documents(
@@ -373,14 +423,46 @@ async def public_ticket_status(ticket_id: str):
     }
 
 
-# ----------------- Owner Queue Management -----------------
-@api.get("/queue/manage")
+@api.get("/public/business/{business_id}/display")
+async def public_display(business_id: str):
+    """Data for the public TV 'Now Serving' screen."""
+    b = await db.businesses.find_one({"id": business_id}, {"_id": 0})
+    if not b:
+        raise HTTPException(status_code=404, detail="Business not found")
+
+    serving = (
+        await db.queue.find({"business_id": business_id, "status": "serving"}, {"_id": 0})
+        .sort("chair_number", 1)
+        .to_list(50)
+    )
+    waiting = (
+        await db.queue.find({"business_id": business_id, "status": "waiting"}, {"_id": 0})
+        .sort("token_number", 1)
+        .limit(6)
+        .to_list(6)
+    )
+    waiting_count = await db.queue.count_documents(
+        {"business_id": business_id, "status": "waiting"}
+    )
+    return {
+        "business": public_business(b),
+        "serving": [public_ticket(t) for t in serving],
+        "upcoming": [public_ticket(t) for t in waiting],
+        "waiting_count": waiting_count,
+        "total_chairs": b.get("total_chairs", 1),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ----------------- Owner Queue Management (per-outlet) -----------------
+@api.get("/business/{business_id}/queue")
 async def list_queue(
+    business_id: str,
     user: dict = Depends(get_current_user),
     status: Optional[str] = None,
 ):
-    business = await get_owner_business(user["id"])
-    query = {"business_id": business["id"]}
+    await owned_business_or_404(user["id"], business_id)
+    query = {"business_id": business_id}
     if status:
         query["status"] = status
     else:
@@ -391,9 +473,9 @@ async def list_queue(
     return [public_ticket(t) for t in tickets]
 
 
-@api.post("/queue/manage/walk-in")
-async def add_walk_in(body: WalkInRequest, user: dict = Depends(get_current_user)):
-    business = await get_owner_business(user["id"])
+@api.post("/business/{business_id}/queue/walk-in")
+async def add_walk_in(business_id: str, body: WalkInRequest, user: dict = Depends(get_current_user)):
+    business = await owned_business_or_404(user["id"], business_id)
     token_number = await next_token_number(business["id"])
     ticket_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -407,44 +489,51 @@ async def add_walk_in(body: WalkInRequest, user: dict = Depends(get_current_user
         "booking_type": "walk-in",
         "chair_number": None,
         "created_at": now,
+        "served_at": None,
         "finished_at": None,
     }
     await db.queue.insert_one(ticket)
     return public_ticket(ticket)
 
 
-@api.patch("/queue/manage/{ticket_id}/status")
+@api.patch("/business/{business_id}/queue/{ticket_id}/status")
 async def update_ticket_status(
+    business_id: str,
     ticket_id: str,
     body: UpdateStatusRequest,
     user: dict = Depends(get_current_user),
 ):
-    business = await get_owner_business(user["id"])
+    business = await owned_business_or_404(user["id"], business_id)
     t = await db.queue.find_one({"id": ticket_id, "business_id": business["id"]}, {"_id": 0})
     if not t:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    updates = {"status": body.status}
-    if body.status in ("completed", "cancelled"):
-        updates["finished_at"] = datetime.now(timezone.utc).isoformat()
-    if body.status == "serving" and t.get("chair_number") is None:
-        # assign a free chair
-        serving_tickets = await db.queue.find(
-            {"business_id": business["id"], "status": "serving"}, {"_id": 0, "chair_number": 1}
-        ).to_list(1000)
-        taken = {s.get("chair_number") for s in serving_tickets if s.get("chair_number")}
-        total_chairs = business.get("total_chairs", 1)
-        for i in range(1, total_chairs + 1):
-            if i not in taken:
-                updates["chair_number"] = i
-                break
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    updates: dict = {"status": body.status}
+    if body.status in ("completed", "cancelled", "no_show"):
+        updates["finished_at"] = now_iso
+    if body.status == "serving":
+        if not t.get("served_at"):
+            updates["served_at"] = now_iso
+        if t.get("chair_number") is None:
+            serving_tickets = await db.queue.find(
+                {"business_id": business["id"], "status": "serving"},
+                {"_id": 0, "chair_number": 1},
+            ).to_list(1000)
+            taken = {s.get("chair_number") for s in serving_tickets if s.get("chair_number")}
+            total_chairs = business.get("total_chairs", 1)
+            for i in range(1, total_chairs + 1):
+                if i not in taken:
+                    updates["chair_number"] = i
+                    break
     await db.queue.update_one({"id": ticket_id}, {"$set": updates})
     updated = await db.queue.find_one({"id": ticket_id}, {"_id": 0})
     return public_ticket(updated)
 
 
-@api.post("/queue/manage/call-next")
-async def call_next(user: dict = Depends(get_current_user)):
-    business = await get_owner_business(user["id"])
+@api.post("/business/{business_id}/queue/call-next")
+async def call_next(business_id: str, user: dict = Depends(get_current_user)):
+    business = await owned_business_or_404(user["id"], business_id)
     next_ticket = await db.queue.find_one(
         {"business_id": business["id"], "status": "waiting"},
         {"_id": 0},
@@ -466,31 +555,32 @@ async def call_next(user: dict = Depends(get_current_user)):
     if chair is None:
         raise HTTPException(status_code=400, detail="All stations are currently busy")
 
+    now_iso = datetime.now(timezone.utc).isoformat()
     await db.queue.update_one(
         {"id": next_ticket["id"]},
-        {"$set": {"status": "serving", "chair_number": chair}},
+        {"$set": {"status": "serving", "chair_number": chair, "served_at": now_iso}},
     )
     updated = await db.queue.find_one({"id": next_ticket["id"]}, {"_id": 0})
     return public_ticket(updated)
 
 
-@api.get("/queue/manage/stats")
-async def queue_stats(user: dict = Depends(get_current_user)):
-    business = await get_owner_business(user["id"])
+@api.get("/business/{business_id}/stats")
+async def queue_stats(business_id: str, user: dict = Depends(get_current_user)):
+    await owned_business_or_404(user["id"], business_id)
     today = datetime.now(timezone.utc).date().isoformat()
-    waiting = await db.queue.count_documents({"business_id": business["id"], "status": "waiting"})
-    serving = await db.queue.count_documents({"business_id": business["id"], "status": "serving"})
+    waiting = await db.queue.count_documents({"business_id": business_id, "status": "waiting"})
+    serving = await db.queue.count_documents({"business_id": business_id, "status": "serving"})
     completed_today = await db.queue.count_documents(
         {
-            "business_id": business["id"],
+            "business_id": business_id,
             "status": "completed",
             "finished_at": {"$regex": f"^{today}"},
         }
     )
-    cancelled_today = await db.queue.count_documents(
+    no_show_today = await db.queue.count_documents(
         {
-            "business_id": business["id"],
-            "status": "cancelled",
+            "business_id": business_id,
+            "status": {"$in": ["cancelled", "no_show"]},
             "finished_at": {"$regex": f"^{today}"},
         }
     )
@@ -498,7 +588,107 @@ async def queue_stats(user: dict = Depends(get_current_user)):
         "waiting": waiting,
         "serving": serving,
         "completed_today": completed_today,
-        "cancelled_today": cancelled_today,
+        "no_show_today": no_show_today,
+    }
+
+
+@api.get("/business/{business_id}/analytics")
+async def analytics(
+    business_id: str,
+    days: int = 14,
+    user: dict = Depends(get_current_user),
+):
+    await owned_business_or_404(user["id"], business_id)
+    days = max(1, min(days, 90))
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    cursor = db.queue.find(
+        {
+            "business_id": business_id,
+            "status": {"$in": ["completed", "cancelled", "no_show"]},
+            "finished_at": {"$gte": since},
+        },
+        {"_id": 0},
+    )
+    rows = await cursor.to_list(5000)
+
+    total_completed = 0
+    total_cancelled = 0
+    total_no_show = 0
+    per_day = defaultdict(lambda: {"completed": 0, "no_show": 0})
+    heatmap = defaultdict(int)  # key: (weekday, hour)
+    service_minutes = []
+
+    for r in rows:
+        finished = r.get("finished_at")
+        if not finished:
+            continue
+        try:
+            fdt = datetime.fromisoformat(finished.replace("Z", "+00:00"))
+        except Exception:
+            continue
+        day = fdt.date().isoformat()
+        status = r.get("status")
+        if status == "completed":
+            total_completed += 1
+            per_day[day]["completed"] += 1
+            # For heatmap, use served_at if present else finished_at
+            ref = r.get("served_at") or finished
+            try:
+                rdt = datetime.fromisoformat(ref.replace("Z", "+00:00"))
+            except Exception:
+                rdt = fdt
+            heatmap[(rdt.weekday(), rdt.hour)] += 1
+            if r.get("served_at"):
+                try:
+                    sdt = datetime.fromisoformat(r["served_at"].replace("Z", "+00:00"))
+                    mins = (fdt - sdt).total_seconds() / 60.0
+                    if 0 <= mins <= 480:
+                        service_minutes.append(mins)
+                except Exception:
+                    pass
+        elif status == "cancelled":
+            total_cancelled += 1
+            per_day[day]["no_show"] += 1
+        elif status == "no_show":
+            total_no_show += 1
+            per_day[day]["no_show"] += 1
+
+    # Fill missing days with zeros
+    series = []
+    today = datetime.now(timezone.utc).date()
+    for offset in range(days - 1, -1, -1):
+        d = (today - timedelta(days=offset)).isoformat()
+        series.append({
+            "date": d,
+            "completed": per_day[d]["completed"],
+            "no_show": per_day[d]["no_show"],
+        })
+
+    heatmap_out = []
+    for wd in range(7):
+        for hr in range(24):
+            heatmap_out.append({"weekday": wd, "hour": hr, "count": heatmap.get((wd, hr), 0)})
+
+    total_touchpoints = total_completed + total_cancelled + total_no_show
+    no_show_rate = (
+        round(((total_cancelled + total_no_show) / total_touchpoints) * 100, 1)
+        if total_touchpoints
+        else 0.0
+    )
+    avg_service = round(sum(service_minutes) / len(service_minutes), 1) if service_minutes else 0.0
+
+    return {
+        "range_days": days,
+        "totals": {
+            "completed": total_completed,
+            "cancelled": total_cancelled,
+            "no_show": total_no_show,
+            "no_show_rate_pct": no_show_rate,
+            "avg_service_minutes": avg_service,
+        },
+        "series": series,
+        "heatmap": heatmap_out,
     }
 
 
@@ -506,11 +696,23 @@ async def queue_stats(user: dict = Depends(get_current_user)):
 @app.on_event("startup")
 async def on_start():
     await db.users.create_index("email", unique=True)
-    await db.businesses.create_index("owner_user_id", unique=True)
+    await db.businesses.create_index("owner_user_id")
+    # Drop legacy unique index on owner_user_id if it exists from earlier version
+    try:
+        info = await db.businesses.index_information()
+        for name, spec in list(info.items()):
+            if name == "_id_":
+                continue
+            keys = spec.get("key", [])
+            if keys == [("owner_user_id", 1)] and spec.get("unique"):
+                await db.businesses.drop_index(name)
+    except Exception:
+        pass
     await db.queue.create_index([("business_id", 1), ("status", 1)])
     await db.queue.create_index([("business_id", 1), ("token_number", -1)])
+    await db.queue.create_index([("business_id", 1), ("finished_at", -1)])
 
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@gonext.com").lower()
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@go-next.in").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
     existing_admin = await db.users.find_one({"email": admin_email})
     if not existing_admin:
@@ -523,21 +725,42 @@ async def on_start():
             "role": "owner",
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
-        await db.businesses.insert_one({
-            "id": "demo-salon",
-            "owner_user_id": admin_id,
-            "business_name": "Amara Studio",
-            "business_type": "salon",
-            "address": "221 Baker Street",
-            "city": "Mumbai",
-            "state": "Maharashtra",
-            "pincode": "400001",
-            "total_chairs": 4,
-            "token_limit": 100,
-            "is_online": True,
-            "station_label": "Chair",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
+        # Seed primary outlet
+        primary = await db.businesses.find_one({"id": "demo-salon"}, {"_id": 0})
+        if not primary:
+            await db.businesses.insert_one({
+                "id": "demo-salon",
+                "owner_user_id": admin_id,
+                "business_name": "Amara Studio · Bandra",
+                "business_type": "salon",
+                "address": "221 Hill Road",
+                "city": "Mumbai",
+                "state": "Maharashtra",
+                "pincode": "400050",
+                "total_chairs": 4,
+                "token_limit": 100,
+                "is_online": True,
+                "station_label": "Chair",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        # Seed second outlet to showcase multi-outlet
+        second = await db.businesses.find_one({"id": "demo-salon-andheri"}, {"_id": 0})
+        if not second:
+            await db.businesses.insert_one({
+                "id": "demo-salon-andheri",
+                "owner_user_id": admin_id,
+                "business_name": "Amara Studio · Andheri",
+                "business_type": "salon",
+                "address": "45 Linking Road",
+                "city": "Mumbai",
+                "state": "Maharashtra",
+                "pincode": "400058",
+                "total_chairs": 3,
+                "token_limit": 80,
+                "is_online": True,
+                "station_label": "Chair",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
 
 
 @app.on_event("shutdown")

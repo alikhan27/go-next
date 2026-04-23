@@ -22,13 +22,13 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
-    setAuth({ user: data.user, business: data.business });
+    setAuth({ user: data.user, businesses: data.businesses || [] });
     return data;
   };
 
   const register = async (payload) => {
     const { data } = await api.post("/auth/register", payload);
-    setAuth({ user: data.user, business: data.business });
+    setAuth({ user: data.user, businesses: data.businesses || [] });
     return data;
   };
 
@@ -37,8 +37,26 @@ export function AuthProvider({ children }) {
     setAuth(false);
   };
 
+  const addBusiness = (b) => {
+    setAuth((prev) => (prev && prev !== false)
+      ? { ...prev, businesses: [...(prev.businesses || []), b] }
+      : prev);
+  };
+
+  const updateBusiness = (b) => {
+    setAuth((prev) => (prev && prev !== false)
+      ? { ...prev, businesses: (prev.businesses || []).map((x) => (x.id === b.id ? b : x)) }
+      : prev);
+  };
+
+  const removeBusiness = (id) => {
+    setAuth((prev) => (prev && prev !== false)
+      ? { ...prev, businesses: (prev.businesses || []).filter((x) => x.id !== id) }
+      : prev);
+  };
+
   return (
-    <AuthContext.Provider value={{ auth, login, register, logout, refresh, setAuth }}>
+    <AuthContext.Provider value={{ auth, login, register, logout, refresh, setAuth, addBusiness, updateBusiness, removeBusiness }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,0 +1,41 @@
+{
+  "summary": "Full regression for multi-outlet iteration. Rewrote backend_test.py to cover the new routes (/api/business, /api/business/{id}/queue/*, /api/business/{id}/stats, /api/business/{id}/analytics, /api/public/business/{id}/display) and the new auth/me shape {user, businesses:[]}. 19/19 pytest tests pass. Playwright UI verified: login, dashboard outlet-redirect, walk-in dialog, call-next, online toggle, Outlets listing + create+navigate, Analytics (4 stat cards + recharts bar chart + heatmap + range selector), and public Display page (no auth). Outlet switcher dropdown present on DashboardHeader.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Update /app/memory/test_credentials.md: admin email is admin@go-next.in (not admin@gonext.com); auth/me now returns {user, businesses:[...]}; queue endpoints are under /api/business/{id}/queue/*; seeded outlets are demo-salon and demo-salon-andheri; new frontend routes include /dashboard/outlets, /dashboard/:businessId/analytics, /display/:businessId.",
+    "Consider adding data-testid to walk-in button/inputs, outlet switcher option items, call-next, no-show, online toggle, new-outlet form fields, analytics stat cards/range selector, and display station/clock to make future tests robust (currently had to fall back on text/role selectors).",
+    "(Optional) Rate-limit /api/public/business/{id}/join to prevent abuse in production."
+  ],
+  "critical_code_review_comments": [
+    "analytics: completed_today / no_show_today use $regex on ISO string — works but an indexed finished_at_date field would scale better.",
+    "public display endpoint has no caching headers; for a TV screen polling every 3s, consider Cache-Control: no-store and/or an ETag.",
+    "CORS config combines allow_origins=['*'] with allow_credentials=True via allow_origin_regex='.*' — functional but non-standard; browsers normally reject credentials with wildcard origin. Works here because allow_origin_regex reflects the request origin, but worth documenting.",
+    "On startup the legacy unique-index drop block is good; keep it until all envs are migrated.",
+    "No rate-limiting on /api/auth/login — brute-force lockout is NOT implemented (playbook asks for lockout after 5 fails).",
+    "Password hash is bcrypt ($2b$) and httpOnly cookie is set correctly on login — auth playbook basics satisfied.",
+    "Seed admin is idempotent on email-exists (skips) but does NOT update password if ADMIN_PASSWORD env was changed — minor deviation from playbook 'seed_admin updates existing admin if password changed'.",
+    "auth/me 401 on landing still emits a console error; can be silenced in AuthContext by treating 401 as 'unauthenticated' without logging."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% core flows"},
+  "test_credentials": "admin@go-next.in / admin123 (seeded). Seeded outlets: demo-salon, demo-salon-andheri.",
+  "seed_data_creation": "Tests create TEST_-prefixed walk-ins and one UI_TEST_Outlet via Playwright. These linger but are harmless; pytest cleans up most via delete flows.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "backend_test.py now targets the new multi-outlet API. Key fixtures: owner_session (admin@go-next.in) and other_owner_session (registers fresh user to test cross-owner 404). Analytics test seeds 2 completed + 1 no_show on demo-salon-andheri to verify aggregation. Playwright selectors rely mostly on text/role; add data-testid attributes suggested above to stabilize future runs. Display page and all /api/public/* endpoints are correctly unauthenticated.",
+  "rca of the issue": "N/A - no regressions found. Previous iteration's tests were referencing removed routes (/api/queue/manage/*) and wrong admin email (admin@gonext.com); backend_test.py has been rewritten to match the new contract."
+}

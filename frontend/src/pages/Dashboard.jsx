@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useParams, Link, Navigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import Navbar from "../components/Navbar";
+import DashboardHeader from "../components/DashboardHeader";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -15,7 +15,7 @@ import { Badge } from "../components/ui/badge";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import {
-  Plus, UserPlus, Check, X, ChevronRight, Settings as SettingsIcon, Download, Copy,
+  Plus, UserPlus, Check, X, ChevronRight, Download, Copy, Tv, UserX,
 } from "lucide-react";
 
 function StatCard({ label, value, accent, testid }) {
@@ -35,31 +35,33 @@ function statusStyle(status) {
 }
 
 export default function Dashboard() {
-  const { auth, refresh } = useAuth();
-  const business = auth?.business;
+  const { businessId } = useParams();
+  const { auth, updateBusiness } = useAuth();
+  const businesses = auth?.businesses || [];
+  const business = businesses.find((b) => b.id === businessId);
   const [tickets, setTickets] = useState([]);
-  const [stats, setStats] = useState({ waiting: 0, serving: 0, completed_today: 0, cancelled_today: 0 });
+  const [stats, setStats] = useState({ waiting: 0, serving: 0, completed_today: 0, no_show_today: 0 });
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [walkIn, setWalkIn] = useState({ customer_name: "", customer_phone: "" });
   const [isOnline, setIsOnline] = useState(business?.is_online ?? true);
-  const [qrOpen, setQrOpen] = useState(false);
 
   useEffect(() => {
     if (business) setIsOnline(!!business.is_online);
   }, [business]);
 
   const load = useCallback(async () => {
+    if (!business) return;
     try {
       const [q, s] = await Promise.all([
-        api.get("/queue/manage"),
-        api.get("/queue/manage/stats"),
+        api.get(`/business/${business.id}/queue`),
+        api.get(`/business/${business.id}/stats`),
       ]);
       setTickets(q.data);
       setStats(s.data);
-    } catch (err) {
-      // ignore
+    } catch {
+      /* ignore */
     }
-  }, []);
+  }, [business]);
 
   useEffect(() => {
     load();
@@ -70,10 +72,16 @@ export default function Dashboard() {
   const waiting = useMemo(() => tickets.filter((t) => t.status === "waiting"), [tickets]);
   const serving = useMemo(() => tickets.filter((t) => t.status === "serving"), [tickets]);
 
+  if (auth === null) return null;
+  if (!business) {
+    if (businesses.length === 0) return <Navigate to="/dashboard/outlets" replace />;
+    return <Navigate to={`/dashboard/${businesses[0].id}`} replace />;
+  }
+
   const addWalkIn = async (e) => {
     e.preventDefault();
     try {
-      await api.post("/queue/manage/walk-in", walkIn);
+      await api.post(`/business/${business.id}/queue/walk-in`, walkIn);
       toast.success(`Added ${walkIn.customer_name}`);
       setWalkIn({ customer_name: "", customer_phone: "" });
       setWalkInOpen(false);
@@ -85,7 +93,7 @@ export default function Dashboard() {
 
   const updateStatus = async (id, status) => {
     try {
-      await api.patch(`/queue/manage/${id}/status`, { status });
+      await api.patch(`/business/${business.id}/queue/${id}/status`, { status });
       load();
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
@@ -94,7 +102,7 @@ export default function Dashboard() {
 
   const callNext = async () => {
     try {
-      await api.post("/queue/manage/call-next");
+      await api.post(`/business/${business.id}/queue/call-next`);
       toast.success("Next guest is up");
       load();
     } catch (err) {
@@ -105,8 +113,8 @@ export default function Dashboard() {
   const toggleOnline = async (v) => {
     setIsOnline(v);
     try {
-      await api.patch("/business/me", { is_online: v });
-      await refresh();
+      const { data } = await api.patch(`/business/${business.id}`, { is_online: v });
+      updateBusiness(data);
       toast.success(v ? "Queue is open" : "Queue is paused");
     } catch (err) {
       setIsOnline(!v);
@@ -114,12 +122,12 @@ export default function Dashboard() {
     }
   };
 
-  const joinUrl = business ? `${window.location.origin}/join/${business.id}` : "";
+  const joinUrl = `${window.location.origin}/join/${business.id}`;
+  const displayUrl = `${window.location.origin}/display/${business.id}`;
 
-  const copyJoinUrl = () => {
-    if (!joinUrl) return;
-    navigator.clipboard.writeText(joinUrl);
-    toast.success("Join link copied");
+  const copy = (value, label) => {
+    navigator.clipboard.writeText(value);
+    toast.success(`${label} copied`);
   };
 
   const downloadQr = () => {
@@ -131,32 +139,22 @@ export default function Dashboard() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${business?.business_name || "queue"}-qr.svg`;
+    a.download = `${business.business_name}-qr.svg`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  if (!business) {
-    return (
-      <div className="min-h-screen bg-[#F9F8F6]">
-        <Navbar />
-        <div className="mx-auto max-w-2xl px-5 py-20 text-center">
-          <h1 className="font-serif-display text-3xl">We couldn&apos;t find a business for your account.</h1>
-          <p className="mt-3 text-stone-600">Please contact support.</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-[#F9F8F6]">
-      <Navbar />
+      <DashboardHeader activeTab="queue" />
       <main className="mx-auto max-w-6xl px-5 py-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Dashboard</p>
+            <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Live queue</p>
             <h1 className="font-serif-display text-4xl sm:text-5xl mt-2 leading-none">{business.business_name}</h1>
-            <p className="mt-2 text-stone-600 text-sm">{business.address}{business.city ? `, ${business.city}` : ""}</p>
+            <p className="mt-2 text-stone-600 text-sm">
+              {[business.address, business.city, business.state, business.pincode].filter(Boolean).join(", ")}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 rounded-full border border-stone-200 bg-white px-4 py-2">
@@ -164,9 +162,6 @@ export default function Dashboard() {
               <span className="text-xs font-medium text-stone-700">{isOnline ? "Accepting guests" : "Paused"}</span>
               <Switch checked={isOnline} onCheckedChange={toggleOnline} data-testid="dashboard-online-toggle" />
             </div>
-            <Link to="/dashboard/settings" data-testid="dashboard-settings-btn">
-              <Button variant="outline" className="rounded-full border-stone-300"><SettingsIcon className="h-4 w-4 mr-1.5" />Settings</Button>
-            </Link>
           </div>
         </div>
 
@@ -174,7 +169,7 @@ export default function Dashboard() {
           <StatCard label="Waiting" value={stats.waiting} accent="text-[#A86246]" testid="stat-waiting" />
           <StatCard label="Serving" value={stats.serving} accent="text-[#4c6547]" testid="stat-serving" />
           <StatCard label="Done today" value={stats.completed_today} testid="stat-done" />
-          <StatCard label="Stations" value={business.total_chairs} testid="stat-chairs" />
+          <StatCard label="No-shows today" value={stats.no_show_today} testid="stat-noshow" />
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -259,18 +254,28 @@ export default function Dashboard() {
                     </TableCell>
                     <TableCell>
                       <Badge className={`rounded-full border font-normal ${statusStyle(t.status)}`}>
-                        {t.status === "serving" && t.chair_number ? `Serving · ${business.station_label || "Station"} ${t.chair_number}` : t.status}
+                        {t.status === "serving" && t.chair_number
+                          ? `Serving · ${business.station_label || "Station"} ${t.chair_number}`
+                          : t.status}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right pr-5">
                       <div className="flex justify-end gap-2">
                         {t.status === "waiting" && (
-                          <Button size="sm" variant="outline" className="rounded-full border-stone-300"
-                            onClick={() => updateStatus(t.id, "serving")}
-                            disabled={serving.length >= business.total_chairs}
-                            data-testid={`serve-${t.token_number}`}>
-                            Start
-                          </Button>
+                          <>
+                            <Button size="sm" variant="outline" className="rounded-full border-stone-300"
+                              onClick={() => updateStatus(t.id, "serving")}
+                              disabled={serving.length >= business.total_chairs}
+                              data-testid={`serve-${t.token_number}`}>
+                              Start
+                            </Button>
+                            <Button size="sm" variant="ghost" className="rounded-full text-stone-500"
+                              onClick={() => updateStatus(t.id, "no_show")}
+                              title="Mark no-show"
+                              data-testid={`noshow-${t.token_number}`}>
+                              <UserX className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
                         )}
                         {t.status === "serving" && (
                           <Button size="sm"
@@ -280,7 +285,7 @@ export default function Dashboard() {
                             <Check className="h-3.5 w-3.5 mr-1" /> Done
                           </Button>
                         )}
-                        {t.status !== "completed" && t.status !== "cancelled" && (
+                        {t.status !== "completed" && t.status !== "cancelled" && t.status !== "no_show" && (
                           <Button size="sm" variant="ghost" className="rounded-full text-stone-500"
                             onClick={() => updateStatus(t.id, "cancelled")}
                             data-testid={`cancel-${t.token_number}`}>
@@ -303,7 +308,7 @@ export default function Dashboard() {
                 <QRCodeSVG value={joinUrl} size={150} bgColor="#F4EFE8" fgColor="#2C302E" />
               </div>
               <div className="mt-4 flex gap-2">
-                <Button onClick={copyJoinUrl} variant="outline" className="rounded-full border-stone-300 flex-1" data-testid="copy-join-link">
+                <Button onClick={() => copy(joinUrl, "Join link")} variant="outline" className="rounded-full border-stone-300 flex-1" data-testid="copy-join-link">
                   <Copy className="h-4 w-4 mr-1.5" /> Copy link
                 </Button>
                 <Button onClick={downloadQr} variant="outline" className="rounded-full border-stone-300 flex-1" data-testid="download-qr">
@@ -314,11 +319,30 @@ export default function Dashboard() {
             </div>
 
             <div className="rounded-2xl border border-stone-200 bg-white p-6">
+              <h3 className="font-serif-display text-xl flex items-center gap-2">
+                <Tv className="h-4 w-4 text-[#A86246]" /> Public TV display
+              </h3>
+              <p className="mt-1 text-xs text-stone-500">Open this on a lobby screen to show who&apos;s being served now.</p>
+              <div className="mt-3 flex gap-2">
+                <Link to={`/display/${business.id}`} target="_blank" rel="noreferrer" className="flex-1" data-testid="open-display">
+                  <Button variant="outline" className="w-full rounded-full border-stone-300">
+                    <Tv className="h-4 w-4 mr-1.5" /> Open display
+                  </Button>
+                </Link>
+                <Button onClick={() => copy(displayUrl, "Display link")}
+                  variant="ghost" size="icon" className="rounded-full" data-testid="copy-display-link">
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="mt-3 text-[11px] break-all text-stone-500">{displayUrl}</p>
+            </div>
+
+            <div className="rounded-2xl border border-stone-200 bg-white p-6">
               <h3 className="font-serif-display text-xl">Tips</h3>
               <ul className="mt-3 space-y-2 text-sm text-stone-600">
                 <li className="flex gap-2"><Plus className="h-4 w-4 text-[#C47C5C] flex-none mt-0.5" /> Use <strong>Call next</strong> to auto-assign the next free station.</li>
-                <li className="flex gap-2"><Plus className="h-4 w-4 text-[#C47C5C] flex-none mt-0.5" /> Pause the queue after last call; unpause next morning.</li>
-                <li className="flex gap-2"><Plus className="h-4 w-4 text-[#C47C5C] flex-none mt-0.5" /> The customer link is permanent — reprint only when you rename the salon.</li>
+                <li className="flex gap-2"><Plus className="h-4 w-4 text-[#C47C5C] flex-none mt-0.5" /> Mark waiting guests as no-show to keep analytics accurate.</li>
+                <li className="flex gap-2"><Plus className="h-4 w-4 text-[#C47C5C] flex-none mt-0.5" /> Open the TV display on a lobby screen for customers.</li>
               </ul>
             </div>
           </aside>
