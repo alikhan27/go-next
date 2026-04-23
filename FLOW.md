@@ -3,7 +3,7 @@
 > One place to understand how the Salon Queue app works end-to-end — for you, future agents, and anyone joining the project.
 > Updated on every feature / bug-fix iteration.
 
-**Last updated**: 2026-02 — iteration 2 (multi-outlet + analytics + public TV display)
+**Last updated**: 2026-02 — iteration 3 (in-app "What's new" page + unread indicator)
 
 ---
 
@@ -148,6 +148,7 @@ All routes are under `/api`.
 | `/register`                          | Public    | Owner + first-outlet signup                |
 | `/dashboard`                         | Protected | Redirect to first outlet / `/dashboard/outlets` |
 | `/dashboard/outlets`                 | Protected | List + create + delete outlets             |
+| `/dashboard/whats-new`               | Protected | In-app change log / release notes          |
 | `/dashboard/:businessId`             | Protected | Live queue for that outlet                 |
 | `/dashboard/:businessId/settings`    | Protected | Outlet settings                            |
 | `/dashboard/:businessId/analytics`   | Protected | Charts + heatmap                           |
@@ -198,7 +199,10 @@ React (frontend) ── axios withCredentials ──► FastAPI (/api)
 
 ## 9. Change log
 
-### v2 — 2026-02 (current)
+### v2.1 — 2026-02 (current)
+- **In-app "What's new" page** at `/dashboard/whats-new`, linked from the dashboard header and the user menu. Uses `localStorage` key `gonext:whatsnew:seen` + `LATEST_VERSION` from `src/lib/releases.js` to show a small terracotta **unread dot** on the header link until the page is viewed. Release entries live in one file (`releases.js`) — adding a new release = bump `LATEST_VERSION` and prepend to `RELEASES`.
+
+### v2 — 2026-02
 - **Multi-outlet / chain support.** One owner can have many businesses. Dashboard header has an outlet switcher; new `/dashboard/outlets` page to list/create/delete outlets. `auth/me` now returns `businesses: [...]`. Queue endpoints moved under `/api/business/{id}/queue/*`.
 - **Owner analytics** at `/dashboard/:id/analytics`: stat cards, per-day bar chart (`recharts`), 7×24 busy-hour heatmap, range selector 7/14/30/90 days. Added `no_show` status + `served_at` timestamp for accurate metrics.
 - **Public TV "Now Serving" display** at `/display/:businessId` (public, dark layout, live clock, 3s refresh).

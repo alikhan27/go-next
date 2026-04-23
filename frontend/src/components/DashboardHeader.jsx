@@ -1,4 +1,5 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "./ui/button";
 import {
@@ -8,7 +9,34 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { Plus, ChevronDown, LogOut, Building2 } from "lucide-react";
+import { Plus, ChevronDown, LogOut, Building2, Sparkles } from "lucide-react";
+import { LATEST_VERSION } from "../lib/releases";
+
+const SEEN_KEY = "gonext:whatsnew:seen";
+
+function useHasUnreadRelease() {
+  const [unread, setUnread] = useState(false);
+  useEffect(() => {
+    const check = () => {
+      try {
+        setUnread(localStorage.getItem(SEEN_KEY) !== LATEST_VERSION);
+      } catch {
+        setUnread(false);
+      }
+    };
+    check();
+    const onStorage = (e) => {
+      if (!e || e.key === SEEN_KEY) check();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("gonext:whatsnew-seen", check);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("gonext:whatsnew-seen", check);
+    };
+  }, []);
+  return unread;
+}
 
 export default function DashboardHeader({ activeTab = "queue" }) {
   const { auth, logout } = useAuth();
@@ -16,6 +44,7 @@ export default function DashboardHeader({ activeTab = "queue" }) {
   const { businessId } = useParams();
   const businesses = auth?.businesses || [];
   const current = businesses.find((b) => b.id === businessId) || businesses[0];
+  const hasUnread = useHasUnreadRelease();
 
   const switchOutlet = (id) => {
     if (!id) return;
@@ -94,6 +123,10 @@ export default function DashboardHeader({ activeTab = "queue" }) {
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => navigate("/dashboard/outlets")} data-testid="menu-outlets">
               <Building2 className="h-4 w-4 mr-2" /> All outlets
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate("/dashboard/whats-new")} data-testid="menu-whats-new">
+              <Sparkles className="h-4 w-4 mr-2" /> What&apos;s new
+              {hasUnread && <span className="ml-auto h-2 w-2 rounded-full bg-[#C47C5C]" />}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleLogout} data-testid="menu-logout">
               <LogOut className="h-4 w-4 mr-2" /> Logout

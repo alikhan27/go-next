@@ -9,6 +9,7 @@ import Outlets from "./pages/Outlets";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import Analytics from "./pages/Analytics";
+import WhatsNew from "./pages/WhatsNew";
 import JoinQueue from "./pages/JoinQueue";
 import TicketStatus from "./pages/TicketStatus";
 import Display from "./pages/Display";
@@ -50,6 +51,7 @@ export default function App() {
 
             <Route path="/dashboard" element={<DashboardRedirect />} />
             <Route path="/dashboard/outlets" element={<Protected><Outlets /></Protected>} />
+            <Route path="/dashboard/whats-new" element={<Protected><WhatsNew /></Protected>} />
             <Route path="/dashboard/:businessId" element={<Protected><Dashboard /></Protected>} />
             <Route path="/dashboard/:businessId/settings" element={<Protected><Settings /></Protected>} />
             <Route path="/dashboard/:businessId/analytics" element={<Protected><Analytics /></Protected>} />
