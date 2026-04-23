@@ -94,6 +94,31 @@ export default function DashboardHeader({ activeTab = "queue" }) {
           </Button>
         </Link>
 
+        <Link to="/dashboard/whats-new" data-testid="nav-whats-new" className="relative">
+          <Button variant="ghost" size="sm" className="rounded-full text-stone-600 hover:text-stone-900">
+            <Sparkles className="h-3.5 w-3.5 mr-1" /> What&apos;s new
+          </Button>
+          {hasUnread && (
+            <span
+              className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-[#C47C5C] ring-2 ring-[#F9F8F6]"
+              data-testid="whats-new-dot"
+            />
+          )}
+        </Link>
+
+        {auth?.user?.plan && (
+          <span
+            className={`hidden md:inline-flex items-center rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.22em] border ${
+              auth.user.plan === "premium"
+                ? "bg-[#C47C5C]/10 text-[#A86246] border-[#C47C5C]/30"
+                : "bg-stone-100 text-stone-600 border-stone-200"
+            }`}
+            data-testid="plan-badge"
+          >
+            {auth.user.plan === "premium" ? "Premium" : "Free plan"}
+          </span>
+        )}
+
         <nav className="ml-auto hidden md:flex items-center gap-1">
           {tabs.map((t) => (
             <Link key={t.key} to={t.to} data-testid={`tab-${t.key}`}>

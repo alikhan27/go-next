@@ -166,6 +166,89 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Pricing */}
+      <section id="pricing" className="bg-white border-t border-stone-200">
+        <div className="mx-auto max-w-6xl px-5 py-20 lg:py-28">
+          <div className="max-w-3xl">
+            <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Pricing</p>
+            <h2 className="font-serif-display mt-3 text-3xl sm:text-4xl lg:text-5xl leading-tight">
+              Start free. <span className="italic">Grow when you&apos;re ready.</span>
+            </h2>
+            <p className="mt-4 text-stone-600 text-base sm:text-lg max-w-xl">
+              Two plans. Transparent limits. Move to Premium when you open a second outlet or want the full analytics, TV display and higher tokens.
+            </p>
+          </div>
+
+          <div className="mt-12 grid gap-6 md:grid-cols-2 stagger-in">
+            <div className="rounded-3xl border border-stone-200 bg-[#F9F8F6] p-8" data-testid="pricing-free">
+              <div className="flex items-baseline justify-between">
+                <p className="text-[11px] uppercase tracking-[0.26em] text-stone-500">Free</p>
+                <span className="rounded-full bg-stone-200 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-stone-600">for new salons</span>
+              </div>
+              <p className="font-serif-display text-6xl mt-4">₹0</p>
+              <p className="text-sm text-stone-500">forever — no card needed</p>
+              <ul className="mt-7 space-y-3 text-sm">
+                {[
+                  "1 outlet with up to 2 stations",
+                  "Up to 50 tokens per day",
+                  "Live queue board & customer QR",
+                  "Live customer ticket tracking",
+                  "14-day analytics",
+                ].map((f) => (
+                  <li key={f} className="flex items-start gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-[#7D9276] flex-none mt-0.5" />
+                    <span className="text-stone-700">{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link to="/register" className="mt-8 block" data-testid="pricing-free-cta">
+                <Button variant="outline" className="w-full rounded-full border-stone-300 h-11 press">
+                  Start free
+                </Button>
+              </Link>
+            </div>
+
+            <div className="rounded-3xl border-2 border-[#C47C5C]/60 bg-white p-8 shadow-sm relative overflow-hidden" data-testid="pricing-premium">
+              <div
+                className="absolute inset-0 opacity-60 pointer-events-none"
+                style={{ background: "radial-gradient(400px 200px at 90% -10%, rgba(196,124,92,0.18), transparent 60%)" }}
+              />
+              <div className="relative">
+                <div className="flex items-baseline justify-between">
+                  <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Premium</p>
+                  <span className="rounded-full bg-[#2C302E] text-white px-3 py-1 text-[10px] uppercase tracking-[0.22em]">Best for chains</span>
+                </div>
+                <p className="font-serif-display text-6xl mt-4">$19<span className="text-lg text-stone-500"> /mo</span></p>
+                <p className="text-sm text-stone-500">per owner · cancel anytime</p>
+                <ul className="mt-7 space-y-3 text-sm">
+                  {[
+                    "Up to 10 outlets",
+                    "Up to 100 stations per outlet",
+                    "Up to 1,000 tokens per day",
+                    "Public TV \u201cNow Serving\u201d display",
+                    "Full 90-day analytics & heatmap",
+                    "Priority support",
+                  ].map((f) => (
+                    <li key={f} className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-[#C47C5C] flex-none mt-0.5" />
+                      <span className="text-stone-700">{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Link to="/register" className="mt-8 block" data-testid="pricing-premium-cta">
+                  <Button className="w-full rounded-full bg-[#C47C5C] hover:bg-[#A86246] text-white h-11 press">
+                    Start free · upgrade anytime
+                  </Button>
+                </Link>
+                <p className="mt-3 text-[11px] text-stone-500 text-center">
+                  Go-Next is still in preview — Premium is activated manually by our team today.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="mx-auto max-w-5xl px-5 py-20 lg:py-28 text-center">
         <Sparkles className="mx-auto h-6 w-6 text-[#C47C5C]" />
         <h2 className="font-serif-display mt-4 text-3xl sm:text-4xl lg:text-5xl leading-tight">
@@ -198,6 +281,7 @@ export default function Landing() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-8">
           <p className="text-xs text-stone-500">© {new Date().getFullYear()} Go-Next Queue Platform</p>
           <div className="flex gap-4 text-xs text-stone-600">
+            <a href="#pricing" className="hover:text-stone-900">Pricing</a>
             <Link to="/login" className="hover:text-stone-900">Sign in</Link>
             <Link to="/register" className="hover:text-stone-900">Create account</Link>
             <Link to="/join/demo-salon" className="hover:text-stone-900">Demo queue</Link>

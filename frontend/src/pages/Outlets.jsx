@@ -31,6 +31,11 @@ export default function Outlets() {
     pincode: "",
   });
 
+  const isPremium = auth?.user?.plan === "premium";
+  const businesses = auth?.businesses || [];
+  const maxOutlets = isPremium ? 10 : 1;
+  const atLimit = businesses.length >= maxOutlets;
+
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 
   const submit = async (e) => {
@@ -60,8 +65,6 @@ export default function Outlets() {
     }
   };
 
-  const businesses = auth?.businesses || [];
-
   return (
     <div className="min-h-screen bg-[#F9F8F6]">
       <DashboardHeader activeTab="queue" />
@@ -70,11 +73,20 @@ export default function Outlets() {
           <div>
             <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Outlets</p>
             <h1 className="font-serif-display text-4xl sm:text-5xl mt-2 leading-none">Your locations</h1>
-            <p className="mt-2 text-stone-600 text-sm">Manage every branch from one account.</p>
+            <p className="mt-2 text-stone-600 text-sm">
+              {isPremium
+                ? `Premium plan · up to ${maxOutlets} outlets.`
+                : `Free plan · ${businesses.length} / ${maxOutlets} outlet used.`}
+            </p>
           </div>
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={(v) => !atLimit && setOpen(v)}>
             <DialogTrigger asChild>
-              <Button className="rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white press" data-testid="new-outlet-btn">
+              <Button
+                className="rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white press disabled:opacity-40"
+                disabled={atLimit}
+                data-testid="new-outlet-btn"
+                title={atLimit && !isPremium ? "Upgrade to Premium to add more outlets" : undefined}
+              >
                 <Plus className="h-4 w-4 mr-1.5" /> New outlet
               </Button>
             </DialogTrigger>
@@ -138,6 +150,20 @@ export default function Outlets() {
             </DialogContent>
           </Dialog>
         </div>
+
+        {!isPremium && atLimit && (
+          <div className="mt-8 rounded-2xl border border-[#C47C5C]/40 bg-[#F4EFE8]/60 p-5 flex flex-wrap items-center justify-between gap-3" data-testid="upgrade-banner">
+            <div>
+              <p className="font-serif-display text-xl leading-tight">You&apos;re at your Free plan limit.</p>
+              <p className="mt-1 text-sm text-stone-600">Upgrade to Premium to add up to 10 outlets, 100 stations, and full analytics.</p>
+            </div>
+            <Link to="/#pricing" data-testid="upgrade-banner-cta">
+              <Button className="rounded-full bg-[#C47C5C] hover:bg-[#A86246] text-white h-10 px-5 press">
+                See pricing
+              </Button>
+            </Link>
+          </div>
+        )}
 
         {businesses.length === 0 ? (
           <div className="mt-12 rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center">

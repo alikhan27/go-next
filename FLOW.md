@@ -3,7 +3,7 @@
 > One place to understand how the Salon Queue app works end-to-end — for you, future agents, and anyone joining the project.
 > Updated on every feature / bug-fix iteration.
 
-**Last updated**: 2026-02 — iteration 3 (in-app "What's new" page + unread indicator)
+**Last updated**: 2026-02 — iteration 4 (Free/Premium plans + Super admin panel)
 
 ---
 
@@ -15,9 +15,10 @@ Three audiences use it:
 
 | Audience              | What they do                                                                  | Where they are                 |
 | --------------------- | ----------------------------------------------------------------------------- | ------------------------------ |
-| Business owner        | Creates outlets, manages live queue, views analytics                          | `/login`, `/dashboard/…`       |
+| Business owner        | Creates outlets (plan-limited), manages live queue, views analytics           | `/login`, `/dashboard/…`       |
 | Customer / guest      | Scans a QR, joins the queue, watches live position & ETA                      | `/join/:id`, `/ticket/:id`     |
 | Lobby TV              | Displays the "Now Serving" board fullscreen on a screen in the salon          | `/display/:id`                 |
+| Super admin           | Manages every owner's plan + every outlet across the platform                 | `/admin`                       |
 
 ---
 
@@ -105,6 +106,11 @@ Timestamps: `created_at` (always), `served_at` (set on `serving`), `finished_at`
 
 All routes are under `/api`.
 
+### Plans (public)
+| Method | Path       | Notes                                                     |
+| ------ | ---------- | --------------------------------------------------------- |
+| GET    | `/plans`   | Returns Free + Premium cards with limits + features       |
+
 ### Auth
 | Method | Path                     | Notes                                                            |
 | ------ | ------------------------ | ---------------------------------------------------------------- |
@@ -127,6 +133,15 @@ All routes are under `/api`.
 | PATCH  | `/business/{id}/queue/{ticket_id}/status`     | body: `{status}`                         |
 | GET    | `/business/{id}/stats`                        | today-scope counts                       |
 | GET    | `/business/{id}/analytics?days=N`             | 1 ≤ N ≤ 90, default 14                   |
+
+### Super admin (role=super_admin)
+| Method | Path                              | Notes                                         |
+| ------ | --------------------------------- | --------------------------------------------- |
+| GET    | `/admin/stats`                    | Platform-wide counts                          |
+| GET    | `/admin/users`                    | Owners with plan + outlet count               |
+| PATCH  | `/admin/users/{id}`               | `{plan: "free" | "premium"}`                  |
+| GET    | `/admin/businesses`               | Every outlet across owners                    |
+| DELETE | `/admin/businesses/{id}`          | Delete any outlet (cascades to tickets)       |
 
 ### Public (no auth)
 | Method | Path                                           | Notes                                        |
@@ -199,7 +214,18 @@ React (frontend) ── axios withCredentials ──► FastAPI (/api)
 
 ## 9. Change log
 
-### v2.1 — 2026-02 (current)
+### v2.2 — 2026-02 (current)
+- **Free / Premium plans.**
+  - Free: 1 outlet, 2 stations, 50 tokens/day, 14-day analytics.
+  - Premium: 10 outlets, 100 stations, 1000 tokens/day, 90-day analytics, TV display.
+  - Enforced at `POST /api/business` and `PATCH /api/business/{id}`. `GET /api/plans` returns marketing copy.
+- **Pricing section** on the landing page (`/#pricing`), with two cards side-by-side.
+- **Super admin** role. Seeded `super@go-next.in / admin123`. Separate login redirect to `/admin`.
+  - New endpoints: `GET /api/admin/stats`, `GET /api/admin/users`, `PATCH /api/admin/users/{id}` (plan), `GET /api/admin/businesses`, `DELETE /api/admin/businesses/{id}` — all guarded by `role == super_admin`.
+  - `/admin` page has Owners / Outlets / Overview tabs with inline upgrade / downgrade and outlet delete.
+- **Plan badge** in the dashboard header; **upgrade banner** on the Outlets page when a Free owner hits the 1-outlet limit.
+
+### v2.1 — 2026-02
 - **In-app "What's new" page** at `/dashboard/whats-new`, linked from the dashboard header and the user menu. Uses `localStorage` key `gonext:whatsnew:seen` + `LATEST_VERSION` from `src/lib/releases.js` to show a small terracotta **unread dot** on the header link until the page is viewed. Release entries live in one file (`releases.js`) — adding a new release = bump `LATEST_VERSION` and prepend to `RELEASES`.
 
 ### v2 — 2026-02

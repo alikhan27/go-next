@@ -18,9 +18,13 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      await login(email, password);
+      const data = await login(email, password);
       toast.success("Welcome back");
-      navigate("/dashboard");
+      if (data?.user?.role === "super_admin") {
+        navigate("/admin");
+      } else {
+        navigate("/dashboard");
+      }
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
     } finally {
@@ -98,7 +102,8 @@ export default function Login() {
             </Link>
           </p>
           <p className="mt-2 text-xs text-stone-500">
-            Demo: admin@go-next.in · admin123
+            Demo owner: admin@go-next.in · admin123<br />
+            Super admin: super@go-next.in · admin123
           </p>
         </div>
       </div>

@@ -316,3 +316,211 @@ class TestAnalytics:
         r = s.get(f"{API}/business/{DEMO_ID_1}/analytics", params={"days": 500})
         assert r.status_code == 200
         assert r.json()["range_days"] == 90  # clamped
+
+
+
+# ------------- Plans (public) -------------
+class TestPlans:
+    def test_plans_endpoint(self):
+        r = requests.get(f"{API}/plans")
+        assert r.status_code == 200
+        data = r.json()
+        assert "plans" in data
+        ids = {p["id"]: p for p in data["plans"]}
+        assert "free" in ids and "premium" in ids
+        free = ids["free"]
+        assert free["max_outlets"] == 1
+        assert free["max_stations"] == 2
+        assert free["max_tokens_per_day"] == 50
+        assert free["analytics_days"] == 14
+        prem = ids["premium"]
+        assert prem["max_outlets"] == 10
+        assert prem["max_stations"] == 100
+        assert prem["max_tokens_per_day"] == 1000
+        assert prem["analytics_days"] == 90
+
+
+# ------------- Free-plan enforcement -------------
+SUPER_EMAIL = "super@go-next.in"
+SUPER_PASSWORD = "admin123"
+
+
+@pytest.fixture
+def fresh_free_owner():
+    """Register a brand-new free owner; returns (session, data, email)."""
+    s = requests.Session()
+    email = f"test_free_{uuid.uuid4().hex[:8]}@example.com"
+    r = s.post(f"{API}/auth/register", json={
+        "email": email, "password": "password123",
+        "owner_name": "Free Owner", "business_name": "TEST_FreeOutlet",
+        "business_type": "salon", "state": "Maharashtra", "pincode": "400001",
+    }, timeout=15)
+    assert r.status_code == 200, r.text
+    return s, r.json(), email
+
+
+@pytest.fixture(scope="session")
+def super_session():
+    s = requests.Session()
+    r = s.post(f"{API}/auth/login",
+               json={"email": SUPER_EMAIL, "password": SUPER_PASSWORD}, timeout=15)
+    assert r.status_code == 200, f"super login failed: {r.status_code} {r.text}"
+    return s, r.json()
+
+
+class TestFreePlanLimits:
+    def test_register_defaults_to_free_plan(self, fresh_free_owner):
+        s, data, _ = fresh_free_owner
+        assert data["user"]["plan"] == "free"
+        assert data["user"]["role"] == "owner"
+        # me reflects plan/role
+        me = s.get(f"{API}/auth/me").json()
+        assert me["user"]["plan"] == "free"
+        assert me["user"]["role"] == "owner"
+        # Created outlet's token_limit clamped to 50
+        assert data["businesses"][0]["token_limit"] == 50
+
+    def test_free_cannot_create_second_outlet(self, fresh_free_owner):
+        s, _, _ = fresh_free_owner
+        r = s.post(f"{API}/business", json={
+            "business_name": "TEST_Second",
+            "business_type": "salon",
+            "state": "Maharashtra", "pincode": "400001",
+        })
+        assert r.status_code == 403, r.text
+        detail = r.json().get("detail", "")
+        assert "Free" in detail or "outlet" in detail.lower()
+
+    def test_free_cannot_patch_chairs_above_limit(self, fresh_free_owner):
+        s, data, _ = fresh_free_owner
+        bid = data["businesses"][0]["id"]
+        r = s.patch(f"{API}/business/{bid}", json={"total_chairs": 3})
+        assert r.status_code == 403
+        # Equal-to-limit should pass
+        r = s.patch(f"{API}/business/{bid}", json={"total_chairs": 2})
+        assert r.status_code == 200
+
+    def test_free_cannot_patch_token_limit_above_50(self, fresh_free_owner):
+        s, data, _ = fresh_free_owner
+        bid = data["businesses"][0]["id"]
+        r = s.patch(f"{API}/business/{bid}", json={"token_limit": 100})
+        assert r.status_code == 403
+        r = s.patch(f"{API}/business/{bid}", json={"token_limit": 50})
+        assert r.status_code == 200
+
+    def test_premium_admin_has_multiple_outlets(self, owner_session):
+        s, data = owner_session
+        assert data["user"]["plan"] == "premium"
+        ids = [b["id"] for b in data["businesses"]]
+        assert DEMO_ID_1 in ids and DEMO_ID_2 in ids
+
+
+# ------------- Super Admin -------------
+class TestSuperAdminAuthGate:
+    def test_admin_endpoints_unauth(self):
+        for ep in ("/admin/stats", "/admin/users", "/admin/businesses"):
+            assert requests.get(f"{API}{ep}").status_code == 401
+
+    def test_admin_endpoints_forbidden_for_owner(self, owner_session):
+        s, _ = owner_session
+        for ep in ("/admin/stats", "/admin/users", "/admin/businesses"):
+            r = s.get(f"{API}{ep}")
+            assert r.status_code == 403, f"{ep} expected 403, got {r.status_code}"
+
+
+class TestSuperAdminFlows:
+    def test_super_login_returns_role(self, super_session):
+        _s, data = super_session
+        assert data["user"]["role"] == "super_admin"
+        assert data["user"]["email"] == SUPER_EMAIL
+
+    def test_admin_stats_shape(self, super_session):
+        s, _ = super_session
+        r = s.get(f"{API}/admin/stats")
+        assert r.status_code == 200, r.text
+        data = r.json()
+        for k in ("total_users", "free_users", "premium_users",
+                  "total_businesses", "total_tickets", "completed_today"):
+            assert k in data
+            assert isinstance(data[k], int)
+        # premium users must include the seeded admin
+        assert data["premium_users"] >= 1
+        assert data["total_users"] >= 1
+
+    def test_admin_users_list_has_outlet_count(self, super_session):
+        s, _ = super_session
+        r = s.get(f"{API}/admin/users")
+        assert r.status_code == 200
+        users = r.json()
+        assert isinstance(users, list)
+        emails = {u["email"]: u for u in users}
+        assert ADMIN_EMAIL in emails
+        admin_entry = emails[ADMIN_EMAIL]
+        assert admin_entry["plan"] == "premium"
+        assert admin_entry["outlet_count"] >= 2
+        # super admin should NOT appear (role filter = owner)
+        assert SUPER_EMAIL not in emails
+
+    def test_admin_businesses_has_owner_email(self, super_session):
+        s, _ = super_session
+        r = s.get(f"{API}/admin/businesses")
+        assert r.status_code == 200
+        outlets = r.json()
+        assert isinstance(outlets, list)
+        ids = {o["id"]: o for o in outlets}
+        assert DEMO_ID_1 in ids
+        demo = ids[DEMO_ID_1]
+        assert demo["owner_email"] == ADMIN_EMAIL
+        assert demo["owner_plan"] == "premium"
+        assert "owner_name" in demo
+
+    def test_upgrade_free_to_premium_unlocks_second_outlet(self, super_session, fresh_free_owner):
+        sup_s, _ = super_session
+        own_s, own_data, _email = fresh_free_owner
+        uid = own_data["user"]["id"]
+
+        # Pre-upgrade: second outlet must 403
+        r = own_s.post(f"{API}/business", json={
+            "business_name": "TEST_SecondPre", "state": "Maharashtra", "pincode": "400001",
+        })
+        assert r.status_code == 403
+
+        # Upgrade via admin
+        r = sup_s.patch(f"{API}/admin/users/{uid}", json={"plan": "premium"})
+        assert r.status_code == 200, r.text
+        assert r.json()["plan"] == "premium"
+
+        # /auth/me now reports premium
+        me = own_s.get(f"{API}/auth/me").json()
+        assert me["user"]["plan"] == "premium"
+
+        # Now second outlet creation succeeds
+        r = own_s.post(f"{API}/business", json={
+            "business_name": "TEST_SecondPost", "state": "Maharashtra", "pincode": "400001",
+        })
+        assert r.status_code == 200, r.text
+
+    def test_admin_delete_outlet_and_tickets(self, super_session, owner_session):
+        sup_s, _ = super_session
+        own_s, _ = owner_session
+        # Create a temp outlet under the premium admin owner
+        created = own_s.post(f"{API}/business", json={
+            "business_name": f"TEST_AdminDel_{uuid.uuid4().hex[:6]}",
+            "state": "Maharashtra", "pincode": "400001",
+        }).json()
+        oid = created["id"]
+        # Add a walk-in ticket so we can verify cascade delete
+        own_s.post(f"{API}/business/{oid}/queue/walk-in",
+                   json={"customer_name": "TEST_CascadeDel", "customer_phone": ""})
+
+        # super admin deletes
+        r = sup_s.delete(f"{API}/admin/businesses/{oid}")
+        assert r.status_code == 200
+        assert r.json().get("ok") is True
+
+        # Outlet gone
+        r = own_s.get(f"{API}/business/{oid}")
+        assert r.status_code == 404
+        # Delete again -> 404
+        r = sup_s.delete(f"{API}/admin/businesses/{oid}")
+        assert r.status_code == 404

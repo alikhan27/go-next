@@ -1,9 +1,45 @@
 // Single source of truth for the "What's new" feed inside the app.
 // When adding a new release, bump LATEST_VERSION and prepend an entry.
 
-export const LATEST_VERSION = "v2";
+export const LATEST_VERSION = "v2.2";
 
 export const RELEASES = [
+  {
+    version: "v2.2",
+    date: "Feb 2026",
+    title: "Plans, pricing, and a super-admin panel",
+    tag: "Update",
+    highlights: [
+      {
+        heading: "Free and Premium plans",
+        body: "Start on Free (1 outlet, 2 stations, 50 tokens/day) and upgrade to Premium (10 outlets, 100 stations, 1000 tokens/day, TV display, 90-day analytics). Clear limits surfaced whenever you hit them.",
+      },
+      {
+        heading: "Pricing on the home page",
+        body: "A new Pricing section on / explains both plans side-by-side so owners know what they get before signing up.",
+      },
+      {
+        heading: "Super admin console",
+        body: "New /admin area for platform admins: system stats, a list of every owner with one-click upgrade / downgrade, and an outlet explorer with delete + display shortcut.",
+      },
+      {
+        heading: "Plan badge in the header",
+        body: "Your plan is always visible. Free owners see a gentle nudge toward pricing when they bump into a limit.",
+      },
+    ],
+  },
+  {
+    version: "v2.1",
+    date: "Feb 2026",
+    title: "What\u2019s new, right in the app",
+    tag: "Update",
+    highlights: [
+      {
+        heading: "In-app release notes",
+        body: "A new What\u2019s new page surfaces every release with a small dot in the header when something fresh ships.",
+      },
+    ],
+  },
   {
     version: "v2",
     date: "Feb 2026",

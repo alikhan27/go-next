@@ -93,6 +93,53 @@ async def get_current_user(request: Request) -> dict:
     return user
 
 
+# ----------------- Plans -----------------
+PLAN_LIMITS = {
+    "free": {
+        "max_outlets": 1,
+        "max_stations": 2,
+        "max_tokens_per_day": 50,
+        "analytics_days": 14,
+        "features": [
+            "1 outlet with up to 2 stations",
+            "Up to 50 tokens / day",
+            "Live queue board & customer QR",
+            "Live ticket tracking",
+            "14-day analytics",
+        ],
+    },
+    "premium": {
+        "max_outlets": 10,
+        "max_stations": 100,
+        "max_tokens_per_day": 1000,
+        "analytics_days": 90,
+        "features": [
+            "Up to 10 outlets",
+            "Up to 100 stations per outlet",
+            "Up to 1000 tokens / day",
+            "Public TV \u201cNow Serving\u201d display",
+            "Full 90-day analytics & heatmap",
+            "Priority support",
+        ],
+    },
+}
+
+
+def user_plan(user: dict) -> str:
+    p = (user or {}).get("plan") or "free"
+    return p if p in PLAN_LIMITS else "free"
+
+
+def plan_limits(user: dict) -> dict:
+    return PLAN_LIMITS[user_plan(user)]
+
+
+def require_super_admin(user: dict) -> dict:
+    if (user or {}).get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin access required")
+    return user
+
+
 # ----------------- Models -----------------
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -206,11 +253,18 @@ async def list_user_businesses(user_id: str) -> list:
     return [public_business(b) for b in docs]
 
 
-async def create_business_doc(user_id: str, body: CreateBusinessRequest) -> dict:
+async def create_business_doc(user: dict, body: CreateBusinessRequest) -> dict:
+    limits = plan_limits(user)
+    existing_count = await db.businesses.count_documents({"owner_user_id": user["id"]})
+    if existing_count >= limits["max_outlets"]:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your {user_plan(user).title()} plan allows up to {limits['max_outlets']} outlet(s). Upgrade to add more.",
+        )
     now = datetime.now(timezone.utc).isoformat()
     business = {
         "id": str(uuid.uuid4()),
-        "owner_user_id": user_id,
+        "owner_user_id": user["id"],
         "business_name": body.business_name,
         "business_type": body.business_type,
         "address": body.address,
@@ -218,7 +272,7 @@ async def create_business_doc(user_id: str, body: CreateBusinessRequest) -> dict
         "state": body.state,
         "pincode": body.pincode,
         "total_chairs": 1,
-        "token_limit": 100,
+        "token_limit": min(50, limits["max_tokens_per_day"]),
         "is_online": True,
         "station_label": "Station",
         "created_at": now,
@@ -243,11 +297,12 @@ async def register(body: RegisterRequest, response: Response):
         "password_hash": hash_password(body.password),
         "name": body.owner_name,
         "role": "owner",
+        "plan": "free",
         "created_at": now,
     }
     await db.users.insert_one(user_doc)
 
-    business = await create_business_doc(user_id, CreateBusinessRequest(
+    business = await create_business_doc(user_doc, CreateBusinessRequest(
         business_name=body.business_name,
         business_type=body.business_type,
         address=body.address,
@@ -259,7 +314,7 @@ async def register(body: RegisterRequest, response: Response):
     token = create_access_token(user_id, email)
     set_auth_cookie(response, token)
     return {
-        "user": {"id": user_id, "email": email, "name": body.owner_name, "role": "owner"},
+        "user": {"id": user_id, "email": email, "name": body.owner_name, "role": "owner", "plan": "free"},
         "businesses": [public_business(business)],
         "access_token": token,
     }
@@ -276,7 +331,12 @@ async def login(body: LoginRequest, response: Response):
     set_auth_cookie(response, token)
     businesses = await list_user_businesses(user["id"])
     return {
-        "user": {"id": user["id"], "email": email, "name": user.get("name", ""), "role": user.get("role", "owner")},
+        "user": {
+            "id": user["id"], "email": email,
+            "name": user.get("name", ""),
+            "role": user.get("role", "owner"),
+            "plan": user_plan(user),
+        },
         "businesses": businesses,
         "access_token": token,
     }
@@ -292,7 +352,12 @@ async def logout(response: Response):
 async def me(user: dict = Depends(get_current_user)):
     businesses = await list_user_businesses(user["id"])
     return {
-        "user": {"id": user["id"], "email": user["email"], "name": user.get("name", ""), "role": user.get("role", "owner")},
+        "user": {
+            "id": user["id"], "email": user["email"],
+            "name": user.get("name", ""),
+            "role": user.get("role", "owner"),
+            "plan": user_plan(user),
+        },
         "businesses": businesses,
     }
 
@@ -305,7 +370,7 @@ async def my_businesses(user: dict = Depends(get_current_user)):
 
 @api.post("/business")
 async def create_outlet(body: CreateBusinessRequest, user: dict = Depends(get_current_user)):
-    business = await create_business_doc(user["id"], body)
+    business = await create_business_doc(user, body)
     return public_business(business)
 
 
@@ -319,6 +384,17 @@ async def get_outlet(business_id: str, user: dict = Depends(get_current_user)):
 async def update_outlet(business_id: str, body: UpdateBusinessRequest, user: dict = Depends(get_current_user)):
     business = await owned_business_or_404(user["id"], business_id)
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    limits = plan_limits(user)
+    if "total_chairs" in updates and updates["total_chairs"] > limits["max_stations"]:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your {user_plan(user).title()} plan allows up to {limits['max_stations']} stations. Upgrade to add more.",
+        )
+    if "token_limit" in updates and updates["token_limit"] > limits["max_tokens_per_day"]:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your {user_plan(user).title()} plan allows up to {limits['max_tokens_per_day']} tokens / day. Upgrade for a higher limit.",
+        )
     if updates:
         await db.businesses.update_one({"id": business["id"]}, {"$set": updates})
     updated = await db.businesses.find_one({"id": business["id"]}, {"_id": 0})
@@ -692,6 +768,108 @@ async def analytics(
     }
 
 
+# ----------------- Plans (public) -----------------
+@api.get("/plans")
+async def plans():
+    return {
+        "plans": [
+            {"id": "free", "name": "Free", "price_monthly": 0, **PLAN_LIMITS["free"]},
+            {"id": "premium", "name": "Premium", "price_monthly": 19, **PLAN_LIMITS["premium"]},
+        ],
+    }
+
+
+# ----------------- Super Admin -----------------
+class AdminUserUpdate(BaseModel):
+    plan: Optional[Literal["free", "premium"]] = None
+
+
+@api.get("/admin/stats")
+async def admin_stats(user: dict = Depends(get_current_user)):
+    require_super_admin(user)
+    total_users = await db.users.count_documents({"role": "owner"})
+    free_users = await db.users.count_documents({"role": "owner", "plan": {"$ne": "premium"}})
+    premium_users = await db.users.count_documents({"role": "owner", "plan": "premium"})
+    total_businesses = await db.businesses.count_documents({})
+    total_tickets = await db.queue.count_documents({})
+    today = datetime.now(timezone.utc).date().isoformat()
+    completed_today = await db.queue.count_documents({
+        "status": "completed", "finished_at": {"$regex": f"^{today}"},
+    })
+    return {
+        "total_users": total_users,
+        "free_users": free_users,
+        "premium_users": premium_users,
+        "total_businesses": total_businesses,
+        "total_tickets": total_tickets,
+        "completed_today": completed_today,
+    }
+
+
+@api.get("/admin/users")
+async def admin_users(user: dict = Depends(get_current_user)):
+    require_super_admin(user)
+    users = await db.users.find({"role": "owner"}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(2000)
+    # Attach outlet count per user
+    out = []
+    for u in users:
+        count = await db.businesses.count_documents({"owner_user_id": u["id"]})
+        out.append({
+            "id": u["id"],
+            "email": u["email"],
+            "name": u.get("name", ""),
+            "plan": u.get("plan", "free"),
+            "created_at": u.get("created_at"),
+            "outlet_count": count,
+        })
+    return out
+
+
+@api.patch("/admin/users/{user_id}")
+async def admin_update_user(user_id: str, body: AdminUserUpdate, user: dict = Depends(get_current_user)):
+    require_super_admin(user)
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if updates:
+        await db.users.update_one({"id": user_id}, {"$set": updates})
+    updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    updated.pop("password_hash", None)
+    return updated
+
+
+@api.get("/admin/businesses")
+async def admin_businesses(user: dict = Depends(get_current_user)):
+    require_super_admin(user)
+    docs = await db.businesses.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    # attach owner email
+    owner_ids = list({d["owner_user_id"] for d in docs if d.get("owner_user_id")})
+    owners = {}
+    if owner_ids:
+        for u in await db.users.find({"id": {"$in": owner_ids}}, {"_id": 0, "id": 1, "email": 1, "name": 1, "plan": 1}).to_list(2000):
+            owners[u["id"]] = u
+    out = []
+    for b in docs:
+        owner = owners.get(b.get("owner_user_id"), {})
+        pb = public_business(b)
+        pb["owner_email"] = owner.get("email", "")
+        pb["owner_name"] = owner.get("name", "")
+        pb["owner_plan"] = owner.get("plan", "free")
+        out.append(pb)
+    return out
+
+
+@api.delete("/admin/businesses/{business_id}")
+async def admin_delete_business(business_id: str, user: dict = Depends(get_current_user)):
+    require_super_admin(user)
+    res = await db.businesses.delete_one({"id": business_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Outlet not found")
+    await db.queue.delete_many({"business_id": business_id})
+    return {"ok": True}
+
+
 # ----------------- Startup -----------------
 @app.on_event("startup")
 async def on_start():
@@ -723,6 +901,7 @@ async def on_start():
             "password_hash": hash_password(admin_password),
             "name": "Demo Owner",
             "role": "owner",
+            "plan": "premium",
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
         # Seed primary outlet
@@ -761,6 +940,23 @@ async def on_start():
                 "station_label": "Chair",
                 "created_at": datetime.now(timezone.utc).isoformat(),
             })
+
+    # Backfill plan for older seeded users if missing
+    await db.users.update_many({"role": "owner", "plan": {"$exists": False}}, {"$set": {"plan": "free"}})
+    await db.users.update_one({"email": admin_email, "plan": "free"}, {"$set": {"plan": "premium"}})
+
+    # Seed a super-admin (idempotent)
+    super_email = "super@go-next.in"
+    if not await db.users.find_one({"email": super_email}):
+        await db.users.insert_one({
+            "id": str(uuid.uuid4()),
+            "email": super_email,
+            "password_hash": hash_password("admin123"),
+            "name": "Platform Admin",
+            "role": "super_admin",
+            "plan": "premium",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
 
 
 @app.on_event("shutdown")
