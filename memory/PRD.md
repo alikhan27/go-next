@@ -2,44 +2,49 @@
 
 **Source problem statement**: "Here is the GIT url https://github.com/alikhan27/salon-queue-system.git — Please improve the code base."
 
-The original repo was a Next.js + Supabase queue app. Rebuilt on Emergent's React + FastAPI + MongoDB template with a calm, organic "Warm Sand + Terracotta + Moss" aesthetic per the design agent.
+Rebuilt from Next.js+Supabase onto React + FastAPI + MongoDB with a calm, organic "Warm Sand + Terracotta + Moss" aesthetic.
 
 ## Architecture
-- **Frontend**: React 19 + React Router 7, Shadcn/ui, Tailwind, Outfit + Cormorant Garamond fonts, axios (`withCredentials`), `qrcode.react`.
-- **Backend**: FastAPI + Motor (MongoDB). JWT auth in an httpOnly cookie (7‑day). All routes prefixed with `/api`.
-- **Persistence**: MongoDB collections — `users`, `businesses`, `queue`.
+- **Frontend**: React 19, React Router 7, Shadcn/ui, Tailwind, `recharts`, `qrcode.react`, Cormorant Garamond + Outfit fonts.
+- **Backend**: FastAPI + Motor (MongoDB). JWT auth in httpOnly cookie (7‑day). Everything prefixed `/api`.
+- **Collections**: `users`, `businesses` (many per owner), `queue` (tickets).
 
 ## User personas
-- **Business owner / manager**: registers, opens a live queue board, adds walk-ins, calls next guest, toggles online/offline.
-- **Customer**: scans a QR or opens `/join/:businessId`, enters name+phone, gets a live ticket with position + ETA.
+- **Business owner / manager**: can own multiple outlets, each with its own queue board, analytics, QR and TV display.
+- **Customer**: scans a QR / opens `/join/:businessId`, enters name+phone, gets a live ticket with position + ETA.
+- **Lobby screen** (TV): opens `/display/:businessId` fullscreen — public, auto-refreshing "Now Serving" board.
 
 ## Core requirements (static)
-- One-page owner dashboard with queue control, stats, and QR.
+- Multi-outlet owner dashboard with queue control, stats, QR, TV display link.
 - Public customer join + live ticket status.
 - JWT auth (register/login/logout/me).
-- Editable settings (chairs, token limit, online toggle, station label, address).
+- Per-outlet editable settings (chairs, token limit, online toggle, station label, address).
+- Owner analytics: completions per day, no-show rate, busy-hour heatmap, avg service time.
 
-## Implemented (v1 — 2026-02)
-- JWT auth (cookie + bearer fallback), seeded demo owner `admin@gonext.com / admin123`, demo business `demo-salon`.
-- `/api/auth/*`, `/api/business/me`, `/api/public/business/:id{…}`, `/api/public/ticket/:id`, `/api/queue/manage{,/walk-in,/call-next,/:id/status,/stats}`.
-- Frontend: Landing, Login (prefilled demo), Register, Dashboard (3s polling, walk-in dialog, call-next, online toggle, QR + link copy + SVG download), Settings, JoinQueue, TicketStatus (4s polling).
-- Visual identity per `/app/design_guidelines.json` (Warm Sand/#F9F8F6, Terracotta/#C47C5C, Moss/#7D9276).
-- Verified by the testing agent: 17/17 backend tests pass, all UI flows pass.
+## Implemented
+### v1 — 2026-02
+- JWT auth (cookie + bearer fallback), seeded demo owner.
+- Single-outlet per owner, live queue control, settings, QR, customer join + ticket polling.
+
+### v2 — 2026-02 (current)
+- **Multi-outlet / chain support**: owner can have many businesses. `GET /api/business` list, `POST /api/business` create, `PATCH/DELETE /api/business/{id}`. Outlet switcher in the dashboard header. `/dashboard/outlets` list + create + delete page. `auth/me` returns `businesses: [...]`. Queue endpoints moved under `/api/business/{id}/queue/*`.
+- **Public TV "Now Serving" display** at `/display/:businessId` (public) — dark, large tokens per station, up-next list, live clock, 3s auto-refresh. Uses `GET /api/public/business/{id}/display`.
+- **Owner analytics** at `/dashboard/:businessId/analytics` — stat cards (completed, no-shows, avg service time, daily avg), `recharts` bar chart for per-day completed vs no-show, and a custom CSS-grid busy-hour heatmap (weekday × hour). Backend `GET /api/business/{id}/analytics?days=N`. Added `no_show` status and `served_at` timestamp to support accurate service-time metric + heatmap.
+- Two outlets seeded (Bandra + Andheri) to showcase multi-outlet.
+- Verified: testing agent — **19/19** backend tests pass, all UI flows pass.
 
 ## Backlog (P1)
-- WhatsApp/SMS notification on "your turn" (Twilio).
-- Owner analytics (daily/weekly charts on completions, no-show rate).
-- Multi-outlet / chain support (owner ↔ many businesses).
-- Per-service pricing and service duration overrides.
-- Subscription / paid plan gating (Stripe).
+- WhatsApp/SMS "your turn" notifications via Twilio.
+- CSV export of analytics.
+- Staff accounts under an owner (role-based).
 
 ## Backlog (P2)
-- Customer-facing scheduled slot booking.
-- Staff accounts under an owner.
-- Public TV display mode for "now serving" screen.
-- Import from Google Reviews / QR poster templates.
+- Customer scheduled slot booking.
+- Stripe subscription gating for paid plans (multi-outlet beyond N).
+- Customer-facing "queues near you" directory using pincode + geolocation.
 
 ## Known trade-offs
-- Live updates via polling (3s/4s) instead of WebSockets — simple and reliable for this scale.
-- `_today` stats use regex on ISO date prefix; good enough, can be indexed later.
-- One business per owner (DB uniqueness); multi-outlet requires model extension.
+- Live updates via polling (3s/4s) — simple, reliable at this scale.
+- Analytics `completed_today` / `no_show_today` use regex on ISO date prefix; fine for small-scale, can be indexed later.
+- TV display has no caching headers yet; polling works but ETag/no-store would be cleaner.
+- Brute-force lockout on `/api/auth/login` is NOT implemented yet.
