@@ -101,6 +101,11 @@ export default function Login() {
               Create your business account
             </Link>
           </p>
+          <p className="mt-1 text-sm text-stone-600">
+            <Link to="/forgot-password" className="text-[#A86246] underline underline-offset-4" data-testid="login-forgot-password">
+              Forgot your password?
+            </Link>
+          </p>
           <p className="mt-2 text-xs text-stone-500">
             Demo owner: admin@go-next.in · admin123<br />
             Super admin: super@go-next.in · admin123

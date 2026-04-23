@@ -5,6 +5,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 import os
+import secrets
 import uuid
 import logging
 import bcrypt
@@ -32,6 +33,11 @@ JWT_ALGORITHM = "HS256"
 # Brute-force protection for /api/auth/login
 LOCKOUT_THRESHOLD = 5            # failures allowed per window
 LOCKOUT_WINDOW_MINUTES = 15      # window + cool-off duration
+
+# Password reset (preview mode: link is returned in the API response
+# instead of emailed — swap in a real provider later).
+PASSWORD_RESET_TTL_MINUTES = 30
+PASSWORD_RESET_PREVIEW_MODE = True
 
 
 def jwt_secret() -> str:
@@ -198,6 +204,15 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=16, max_length=128)
+    new_password: str = Field(min_length=6)
 
 
 class CreateBusinessRequest(BaseModel):
@@ -397,6 +412,77 @@ async def login(body: LoginRequest, request: Request, response: Response):
 async def logout(response: Response):
     clear_auth_cookie(response)
     return {"ok": True}
+
+
+@api.post("/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest, request: Request):
+    """Generate a short-lived reset token. Preview mode returns the link
+    directly; production mode will email it and return only {ok: True}."""
+    email = body.email.lower().strip()
+    user = await db.users.find_one({"email": email})
+    preview_link = None
+    if user:
+        # Invalidate older unused tokens for this user
+        await db.password_resets.delete_many({"user_id": user["id"], "used_at": None})
+        token = secrets.token_urlsafe(32)
+        now = datetime.now(timezone.utc)
+        await db.password_resets.insert_one({
+            "token": token,
+            "user_id": user["id"],
+            "email": email,
+            "created_at": now,
+            "expires_at": now + timedelta(minutes=PASSWORD_RESET_TTL_MINUTES),
+            "used_at": None,
+        })
+        base = str(request.base_url).rstrip("/")
+        # Prefer the public origin from the incoming Origin / Referer when available
+        origin = request.headers.get("origin") or request.headers.get("referer") or base
+        origin = origin.rstrip("/")
+        # Strip any path from referer
+        if origin.count("/") > 2:
+            origin = "/".join(origin.split("/")[:3])
+        preview_link = f"{origin}/reset-password?token={token}"
+
+    response_body = {
+        "ok": True,
+        "message": "If this email is registered, you'll receive a password reset link shortly.",
+        "ttl_minutes": PASSWORD_RESET_TTL_MINUTES,
+    }
+    if PASSWORD_RESET_PREVIEW_MODE and preview_link:
+        response_body["preview_reset_link"] = preview_link
+    return response_body
+
+
+@api.post("/auth/reset-password")
+async def reset_password(body: ResetPasswordRequest):
+    record = await db.password_resets.find_one({"token": body.token}, {"_id": 0})
+    if not record:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    if record.get("used_at"):
+        raise HTTPException(status_code=400, detail="This reset link has already been used")
+
+    expires_at = record.get("expires_at")
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if not expires_at or expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="This reset link has expired")
+
+    user = await db.users.find_one({"id": record["user_id"]})
+    if not user:
+        raise HTTPException(status_code=400, detail="Account no longer exists")
+
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"password_hash": hash_password(body.new_password)}},
+    )
+    await db.password_resets.update_one(
+        {"token": body.token},
+        {"$set": {"used_at": datetime.now(timezone.utc)}},
+    )
+    # Unlock any login attempts for this email
+    await clear_attempts(f"email:{user['email']}")
+    return {"ok": True, "email": user["email"]}
 
 
 @api.get("/auth/me")
@@ -988,6 +1074,32 @@ async def on_start():
     await db.queue.create_index([("business_id", 1), ("status", 1)])
     await db.queue.create_index([("business_id", 1), ("token_number", -1)])
     await db.queue.create_index([("business_id", 1), ("finished_at", -1)])
+
+    # Brute-force: auto-expire attempts after the lockout window
+    try:
+        await db.login_attempts.create_index(
+            "attempted_at", expireAfterSeconds=LOCKOUT_WINDOW_MINUTES * 60
+        )
+    except Exception:
+        try:
+            await db.login_attempts.drop_index("attempted_at_1")
+            await db.login_attempts.create_index(
+                "attempted_at", expireAfterSeconds=LOCKOUT_WINDOW_MINUTES * 60
+            )
+        except Exception:
+            pass
+    await db.login_attempts.create_index("identifier")
+
+    # Password reset tokens: TTL auto-expires records at their expires_at datetime
+    try:
+        await db.password_resets.create_index("expires_at", expireAfterSeconds=0)
+    except Exception:
+        pass
+    try:
+        await db.password_resets.create_index("token", unique=True)
+    except Exception:
+        pass
+    await db.password_resets.create_index("user_id")
 
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@go-next.in").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")

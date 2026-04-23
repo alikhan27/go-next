@@ -1,9 +1,33 @@
 // Single source of truth for the "What's new" feed inside the app.
 // When adding a new release, bump LATEST_VERSION and prepend an entry.
 
-export const LATEST_VERSION = "v2.4";
+export const LATEST_VERSION = "v2.5";
 
 export const RELEASES = [
+  {
+    version: "v2.5",
+    date: "Feb 2026",
+    title: "Forgot-password flow",
+    tag: "Update",
+    highlights: [
+      {
+        heading: "Reset your password yourself",
+        body: "A new \u201cForgot your password?\u201d link on the sign-in page. Enter your email, get a 30-minute reset link, pick a new password, and you\u2019re back in.",
+      },
+      {
+        heading: "Privacy by default",
+        body: "The API response looks the same whether or not the email is registered \u2014 attackers can\u2019t use it to fish for valid accounts.",
+      },
+      {
+        heading: "Preview mode (no email yet)",
+        body: "We\u2019re still in preview, so the reset link is shown directly on the page with copy / open buttons. Wiring up Resend or SendGrid later is a one-file change.",
+      },
+      {
+        heading: "Auto-unlock on reset",
+        body: "Resetting your password also clears any login lockout, so you can sign in immediately without waiting 15 minutes.",
+      },
+    ],
+  },
   {
     version: "v2.4",
     date: "Feb 2026",

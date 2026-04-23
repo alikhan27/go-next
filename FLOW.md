@@ -3,7 +3,7 @@
 > One place to understand how the Salon Queue app works end-to-end — for you, future agents, and anyone joining the project.
 > Updated on every feature / bug-fix iteration.
 
-**Last updated**: 2026-02 — iteration 6 (Security tab in admin panel)
+**Last updated**: 2026-02 — iteration 7 (forgot-password flow, preview mode)
 
 ---
 
@@ -115,9 +115,11 @@ All routes are under `/api`.
 | Method | Path                     | Notes                                                            |
 | ------ | ------------------------ | ---------------------------------------------------------------- |
 | POST   | `/auth/register`         | body requires `state` + `pincode`; sets httpOnly cookie          |
-| POST   | `/auth/login`            | sets httpOnly cookie                                             |
+| POST   | `/auth/login`            | sets httpOnly cookie; locks after 5 failures / 15 min             |
 | POST   | `/auth/logout`           | clears cookie                                                    |
 | GET    | `/auth/me`               | returns `{user, businesses: [...]}`                              |
+| POST   | `/auth/forgot-password`  | body `{email}`; returns 200 always; in preview mode includes `preview_reset_link` |
+| POST   | `/auth/reset-password`   | body `{token, new_password}`; single-use; 30-min TTL             |
 
 ### Business (owner, authenticated)
 | Method | Path                                          | Notes                                    |
@@ -216,7 +218,15 @@ React (frontend) ── axios withCredentials ──► FastAPI (/api)
 
 ## 9. Change log
 
-### v2.4 — 2026-02 (current)
+### v2.5 — 2026-02 (current)
+- **Forgot-password flow.** New routes `/forgot-password` + `/reset-password?token=…`. Backend endpoints `POST /api/auth/forgot-password` and `POST /api/auth/reset-password`.
+  - Tokens are 43-char URL-safe random strings stored in `password_resets` with a MongoDB TTL index on `expires_at` (30-minute lifespan).
+  - Tokens can be used once — second use returns 400 "already been used".
+  - **Preview mode** (default): the reset link is returned in the API response and displayed with copy + open buttons on the `/forgot-password` page. Swap to Resend/SendGrid later by setting `PASSWORD_RESET_PREVIEW_MODE = False` and plugging in a mailer.
+  - Forgot response is identical for known + unknown emails (no user enumeration).
+  - Successful reset also clears any active login lockout for that email.
+
+### v2.4 — 2026-02
 - **Security tab in `/admin`**. Super admin can now see every recently-locked-out account (with live countdown) and clear a lockout in one click. Backed by `GET /api/admin/security/lockouts` + `DELETE /api/admin/security/lockouts/{email}`. Tab shows a small red dot whenever at least one account is currently locked.
 
 ### v2.3 — 2026-02

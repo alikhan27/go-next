@@ -14,6 +14,8 @@ import JoinQueue from "./pages/JoinQueue";
 import TicketStatus from "./pages/TicketStatus";
 import Display from "./pages/Display";
 import AdminPanel from "./pages/AdminPanel";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 function Protected({ children }) {
@@ -60,6 +62,8 @@ export default function App() {
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             <Route path="/dashboard" element={<PostLoginRedirect />} />
             <Route path="/dashboard/outlets" element={<Protected><Outlets /></Protected>} />
