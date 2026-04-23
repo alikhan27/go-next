@@ -1,0 +1,78 @@
+{
+  "theme": "LIGHT",
+  "archetype": "1_ORGANIC_EARTHY",
+  "domain_context": "Salon Queue System (Hybrid: Marketing, Manager Dashboard, Customer Public Page)",
+  "emotional_tone": "Calm, premium, grounded, highly functional yet organic. Reduces wait-time anxiety while projecting luxury.",
+  "typography": {
+    "heading_font": "Cormorant Garamond",
+    "body_font": "Outfit",
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight leading-none font-medium",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight leading-tight",
+      "h3": "text-xl sm:text-2xl leading-tight font-medium",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-base leading-relaxed tracking-normal",
+      "overline": "text-xs uppercase tracking-[0.2em] font-semibold"
+    }
+  },
+  "colors": {
+    "background": "#F9F8F6",
+    "surface": "#FFFFFF",
+    "surface_glass": "bg-white/70 backdrop-blur-xl border border-white/40",
+    "text_primary": "#2C302E",
+    "text_secondary": "#5C5F5D",
+    "primary_accent": "#C47C5C",
+    "primary_accent_hover": "#A86246",
+    "success_serving": "#7D9276",
+    "warning_waiting": "#E3A587",
+    "borders": "#E6E4E0"
+  },
+  "spacing_and_layout": {
+    "philosophy": "Generous spacing. Containers use p-6 to p-12. Deeply asymmetrical grids for marketing, hyper-dense functional grids for dashboards.",
+    "marketing_grid": "grid-cols-1 md:grid-cols-12 gap-8. Hero spans 8 cols, secondary visual spans 4.",
+    "dashboard_grid": "grid-cols-1 md:grid-cols-4 gap-6. Main queue table spans 3 cols, quick actions/summary spans 1 col.",
+    "alignment": "Left-align forms and dense data. Optical alignment for icons inside buttons."
+  },
+  "components": {
+    "buttons": "Rounded-full for marketing, rounded-lg for dashboard. Always explicitly set hover:text color.",
+    "cards": "Dashboard cards are flat, 1px subtle border (border-stone-200). No heavy drop shadows. Hover brings slight -translate-y-1 and shadow-lg.",
+    "navigation": "Sticky glassmorphism header (z-50) over content. Never fully transparent.",
+    "forms": "Use Shadcn components heavily customized to match the Organic & Earthy palette. Soft borders, warm focus rings (focus:ring-[#C47C5C]).",
+    "tables": "Shadcn tables. Strip default gray stripes; use warm-tinted borders and high contrast row hovers."
+  },
+  "motion_and_interactions": {
+    "hover_states": "All buttons need transform scale-95 on active, subtle background color shift on hover.",
+    "page_transitions": "Fade and slight slide-up (framer-motion).",
+    "list_animations": "Staggered entrance for queue items."
+  },
+  "testing": {
+    "requirements": "All interactive elements MUST include a data-testid attribute in kebab-case format (e.g., data-testid='login-form-submit-button')."
+  },
+  "media_and_images": {
+    "hero_background": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/16305f5c-ca0f-4552-a6dd-8077b2583f58/images/cb0c75632c21da94b916194fa5cb83b946b915562129439131ec9c76e9c2877c.png",
+      "description": "Abstract fluid shapes in warm sand, terracotta, and soft moss green colors. Perfect for landing page or customer app background.",
+      "usage": "Marketing hero section background (overlay with bg-white/40 for text contrast) or customer public queue page background."
+    },
+    "salon_interior": {
+      "url": "https://images.pexels.com/photos/7195812/pexels-photo-7195812.jpeg",
+      "description": "Stylish beauty salon interior.",
+      "usage": "Marketing page feature image, 'About the Salon' or 'Business Owner' contextual sections."
+    },
+    "customer_waiting": {
+      "url": "https://images.unsplash.com/photo-1776775088350-836bc9a3af80",
+      "description": "People waiting, looking at their phones.",
+      "usage": "Testimonial section or 'How it works' for the customer side."
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow Archetype 1 (Organic & Earthy). Do not use Vercel-like blue/purple themes.",
+    "Use pure HTML/Tailwind for the landing page layout (Bento Grid, asymmetrical) without rigid Shadcn wrappers.",
+    "Use Shadcn UI for the Manager Dashboard and Settings, but override borders/colors to match the warm sand palette.",
+    "Implement the customer queue page as a mobile-first interface with large, bold token numbers using the chosen typography.",
+    "Include data-testid on every clickable button, form submit, and dynamic queue action.",
+    "Ensure the waitlist dashboard utilizes Shadcn Table components with real-time status indication (Moss Green for serving, Soft Clay for waiting).",
+    "Ensure all backgrounds that host text maintain a 4.5:1 WCAG contrast ratio. Use glassmorphism ONLY with a proper solid overlay behind it.",
+    "CRITICAL: Use .js and .jsx extensions for all React components. Do NOT create .tsx files."
+  ]
+}
