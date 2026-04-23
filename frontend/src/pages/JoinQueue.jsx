@@ -35,7 +35,27 @@ export default function JoinQueue() {
 
   useEffect(() => {
     const existing = localStorage.getItem(`ticket-${businessId}`);
-    if (existing) navigate(`/ticket/${existing}`, { replace: true });
+    if (!existing) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get(`/public/ticket/${existing}`);
+        const status = data?.ticket?.status;
+        if (cancelled) return;
+        if (status === "waiting" || status === "serving") {
+          navigate(`/ticket/${existing}`, { replace: true });
+        } else {
+          // terminal or unknown status — stale pointer, drop it and show the form
+          localStorage.removeItem(`ticket-${businessId}`);
+        }
+      } catch {
+        // ticket no longer exists; clear and show the form
+        localStorage.removeItem(`ticket-${businessId}`);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [businessId, navigate]);
 
   const submit = async (e) => {

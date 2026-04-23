@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { CheckCircle2, XCircle, Clock, MapPin, Sparkles } from "lucide-react";
 
 export default function TicketStatus() {
   const { ticketId } = useParams();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -27,6 +28,20 @@ export default function TicketStatus() {
     const id = setInterval(load, 4000);
     return () => clearInterval(id);
   }, [load]);
+
+  // When the ticket reaches a terminal state, clear the localStorage pointer
+  // so the customer is not bounced back here from /join/:businessId.
+  useEffect(() => {
+    const t = data?.ticket;
+    if (!t) return;
+    if (t.status === "completed" || t.status === "cancelled" || t.status === "no_show") {
+      try {
+        localStorage.removeItem(`ticket-${t.business_id}`);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [data]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-[#F9F8F6] text-stone-500">Loading…</div>;
@@ -127,10 +142,17 @@ export default function TicketStatus() {
           </div>
         </div>
 
-        {(ticket.status === "completed" || ticket.status === "cancelled") && (
-          <Link to={`/join/${ticket.business_id}`} className="mt-4 block" data-testid="ticket-rejoin">
-            <Button className="w-full h-12 rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white">Join the queue again</Button>
-          </Link>
+        {(ticket.status === "completed" || ticket.status === "cancelled" || ticket.status === "no_show") && (
+          <Button
+            onClick={() => {
+              try { localStorage.removeItem(`ticket-${ticket.business_id}`); } catch { /* ignore */ }
+              navigate(`/join/${ticket.business_id}`);
+            }}
+            className="mt-4 w-full h-12 rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white press"
+            data-testid="ticket-rejoin"
+          >
+            Join the queue again
+          </Button>
         )}
       </div>
     </div>
