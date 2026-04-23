@@ -10,6 +10,8 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "../components/ui/table";
+import { useTableControls } from "../hooks/useTableControls";
+import { TableToolbar, SortableHead, TablePagination } from "../components/TableControls";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -111,6 +113,20 @@ export default function AdminPanel() {
     navigate("/");
   };
 
+  // Table controls — search, sort, pagination
+  const usersTable = useTableControls(users, {
+    searchKeys: ["email", "name", "plan"],
+    initialSort: { key: "created_at", dir: "desc" },
+  });
+  const outletsTable = useTableControls(outlets, {
+    searchKeys: ["business_name", "owner_email", "owner_name", "city", "state", "pincode"],
+    initialSort: { key: "business_name", dir: "asc" },
+  });
+  const lockoutsTable = useTableControls(lockouts, {
+    searchKeys: ["email"],
+    initialSort: { key: "failed_attempts", dir: "desc" },
+  });
+
   const planStyle = (p) =>
     p === "premium"
       ? "bg-[#C47C5C]/15 text-[#A86246] border-[#C47C5C]/40"
@@ -186,24 +202,36 @@ export default function AdminPanel() {
 
           <TabsContent value="users" className="mt-6">
             <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden" data-testid="admin-users-table">
+              <TableToolbar
+                query={usersTable.query}
+                onQueryChange={usersTable.setSearch}
+                pageSize={usersTable.pageSize}
+                onPageSizeChange={usersTable.setPageSize}
+                total={usersTable.total}
+                placeholder="Search by email, name or plan…"
+                testidPrefix="users"
+              />
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead>Owner</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead className="text-center">Outlets</TableHead>
-                    <TableHead>Plan</TableHead>
+                    <SortableHead label="Owner" sortKey="name" sort={usersTable.sort} onToggle={usersTable.toggleSort} />
+                    <SortableHead label="Email" sortKey="email" sort={usersTable.sort} onToggle={usersTable.toggleSort} />
+                    <SortableHead label="Outlets" sortKey="outlet_count" sort={usersTable.sort} onToggle={usersTable.toggleSort} className="text-center" />
+                    <SortableHead label="Plan" sortKey="plan" sort={usersTable.sort} onToggle={usersTable.toggleSort} />
+                    <SortableHead label="Joined" sortKey="created_at" sort={usersTable.sort} onToggle={usersTable.toggleSort} />
                     <TableHead className="text-right pr-5">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading && (
-                    <TableRow><TableCell colSpan={5} className="text-center py-10 text-stone-500">Loading…</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={6} className="text-center py-10 text-stone-500">Loading…</TableCell></TableRow>
                   )}
-                  {!loading && users.length === 0 && (
-                    <TableRow><TableCell colSpan={5} className="text-center py-10 text-stone-500">No owners yet.</TableCell></TableRow>
+                  {!loading && usersTable.total === 0 && (
+                    <TableRow><TableCell colSpan={6} className="text-center py-10 text-stone-500">
+                      {users.length === 0 ? "No owners yet." : "No owners match that search."}
+                    </TableCell></TableRow>
                   )}
-                  {users.map((u) => (
+                  {usersTable.visible.map((u) => (
                     <TableRow key={u.id} data-testid={`admin-user-row-${u.id}`}>
                       <TableCell className="font-medium">
                         {u.name || "—"}
@@ -215,6 +243,9 @@ export default function AdminPanel() {
                       <TableCell className="text-center">{u.outlet_count}</TableCell>
                       <TableCell>
                         <Badge className={`rounded-full border font-normal ${planStyle(u.plan)}`}>{u.plan}</Badge>
+                      </TableCell>
+                      <TableCell className="text-stone-500 text-xs">
+                        {u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}
                       </TableCell>
                       <TableCell className="text-right pr-5">
                         <div className="flex justify-end gap-2">
@@ -245,6 +276,12 @@ export default function AdminPanel() {
                   ))}
                 </TableBody>
               </Table>
+              <TablePagination
+                page={usersTable.page}
+                totalPages={usersTable.totalPages}
+                onPageChange={usersTable.setPage}
+                testidPrefix="users"
+              />
             </div>
           </TabsContent>
 
@@ -324,6 +361,12 @@ export default function AdminPanel() {
                   ))}
                 </TableBody>
               </Table>
+              <TablePagination
+                page={outletsTable.page}
+                totalPages={outletsTable.totalPages}
+                onPageChange={outletsTable.setPage}
+                testidPrefix="outlets"
+              />
             </div>
           </TabsContent>
 
@@ -350,13 +393,22 @@ export default function AdminPanel() {
                   {lockouts.filter((l) => l.is_locked).length} locked · {lockouts.length} tracked
                 </span>
               </div>
+              <TableToolbar
+                query={lockoutsTable.query}
+                onQueryChange={lockoutsTable.setSearch}
+                pageSize={lockoutsTable.pageSize}
+                onPageSizeChange={lockoutsTable.setPageSize}
+                total={lockoutsTable.total}
+                placeholder="Search by email…"
+                testidPrefix="lockouts"
+              />
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead>Email</TableHead>
-                    <TableHead className="text-center">Failed attempts</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Unlocks in</TableHead>
+                    <SortableHead label="Email" sortKey="email" sort={lockoutsTable.sort} onToggle={lockoutsTable.toggleSort} />
+                    <SortableHead label="Failed attempts" sortKey="failed_attempts" sort={lockoutsTable.sort} onToggle={lockoutsTable.toggleSort} className="text-center" />
+                    <SortableHead label="Status" sortKey="is_locked" sort={lockoutsTable.sort} onToggle={lockoutsTable.toggleSort} />
+                    <SortableHead label="Unlocks in" sortKey="unlock_in_minutes" sort={lockoutsTable.sort} onToggle={lockoutsTable.toggleSort} />
                     <TableHead className="text-right pr-5">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -364,10 +416,12 @@ export default function AdminPanel() {
                   {loading && (
                     <TableRow><TableCell colSpan={5} className="text-center py-10 text-stone-500">Loading…</TableCell></TableRow>
                   )}
-                  {!loading && lockouts.length === 0 && (
-                    <TableRow><TableCell colSpan={5} className="text-center py-10 text-stone-500">No recent failed logins. All quiet.</TableCell></TableRow>
+                  {!loading && lockoutsTable.total === 0 && (
+                    <TableRow><TableCell colSpan={5} className="text-center py-10 text-stone-500">
+                      {lockouts.length === 0 ? "No recent failed logins. All quiet." : "No accounts match that search."}
+                    </TableCell></TableRow>
                   )}
-                  {lockouts.map((l) => (
+                  {lockoutsTable.visible.map((l) => (
                     <TableRow key={l.email} data-testid={`lockout-row-${l.email}`}>
                       <TableCell className="font-medium">{l.email}</TableCell>
                       <TableCell className="text-center">{l.failed_attempts}</TableCell>
@@ -392,6 +446,12 @@ export default function AdminPanel() {
                   ))}
                 </TableBody>
               </Table>
+              <TablePagination
+                page={lockoutsTable.page}
+                totalPages={lockoutsTable.totalPages}
+                onPageChange={lockoutsTable.setPage}
+                testidPrefix="lockouts"
+              />
             </div>
           </TabsContent>
         </Tabs>

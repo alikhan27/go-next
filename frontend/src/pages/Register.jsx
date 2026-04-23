@@ -40,9 +40,14 @@ export default function Register() {
     e.preventDefault();
     setLoading(true);
     try {
-      await register(form);
+      const data = await register(form);
       toast.success("Your business is live");
-      navigate("/dashboard");
+      const firstBusiness = data?.businesses?.[0];
+      if (firstBusiness) {
+        navigate(`/dashboard/${firstBusiness.id}/onboarding`);
+      } else {
+        navigate("/dashboard");
+      }
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
     } finally {

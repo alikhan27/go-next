@@ -524,3 +524,198 @@ class TestSuperAdminFlows:
         # Delete again -> 404
         r = sup_s.delete(f"{API}/admin/businesses/{oid}")
         assert r.status_code == 404
+
+
+# ------------- Brute-force lockout (5 failures / 15-min) -------------
+class TestBruteForceLockout:
+    def test_lockout_after_5_failed_attempts(self):
+        """After 5 failed attempts, the 6th (even with correct pwd) returns 429."""
+        # Create fresh user so we don't lock out the session admin
+        s = requests.Session()
+        email = f"test_brute_{uuid.uuid4().hex[:8]}@example.com"
+        reg = s.post(f"{API}/auth/register", json={
+            "email": email, "password": "password123",
+            "owner_name": "Brute Owner", "business_name": "TEST_BruteOutlet",
+            "business_type": "salon", "state": "Maharashtra", "pincode": "400001",
+        })
+        assert reg.status_code == 200, reg.text
+
+        # 5 wrong attempts → all 401
+        for i in range(5):
+            r = requests.post(f"{API}/auth/login",
+                              json={"email": email, "password": "wrongpw"})
+            assert r.status_code == 401, f"attempt {i+1}: {r.status_code} {r.text}"
+
+        # 6th — even the CORRECT password should be blocked
+        r = requests.post(f"{API}/auth/login",
+                          json={"email": email, "password": "password123"})
+        assert r.status_code == 429, f"expected 429 got {r.status_code}: {r.text}"
+        assert "Too many failed attempts" in r.json().get("detail", "")
+
+        # Super admin clears the lockout
+        sup = requests.Session()
+        sup.post(f"{API}/auth/login",
+                 json={"email": SUPER_EMAIL, "password": SUPER_PASSWORD})
+        clr = sup.delete(f"{API}/admin/security/lockouts/{email}")
+        assert clr.status_code == 200
+        assert clr.json()["ok"] is True
+
+        # Correct login now succeeds
+        r = requests.post(f"{API}/auth/login",
+                          json={"email": email, "password": "password123"})
+        assert r.status_code == 200, r.text
+
+
+# ------------- Forgot/Reset/Lock password flow (preview mode) -------------
+class TestPasswordResetFlow:
+    def test_forgot_returns_preview_link_and_reset_succeeds(self):
+        # Fresh user so we can freely reset
+        s = requests.Session()
+        email = f"test_reset_{uuid.uuid4().hex[:8]}@example.com"
+        original_pw = "password123"
+        new_pw = "newpassword456"
+        reg = s.post(f"{API}/auth/register", json={
+            "email": email, "password": original_pw,
+            "owner_name": "Reset Owner", "business_name": "TEST_ResetOutlet",
+            "business_type": "salon", "state": "Maharashtra", "pincode": "400001",
+        })
+        assert reg.status_code == 200
+
+        # forgot-password
+        fp = requests.post(f"{API}/auth/forgot-password", json={"email": email})
+        assert fp.status_code == 200, fp.text
+        fp_data = fp.json()
+        assert fp_data["ok"] is True
+        assert "preview_reset_link" in fp_data, f"missing preview_reset_link: {fp_data}"
+        link = fp_data["preview_reset_link"]
+        token = link.split("token=")[-1]
+        assert token
+
+        # reset-password
+        rp = requests.post(f"{API}/auth/reset-password",
+                           json={"token": token, "new_password": new_pw})
+        assert rp.status_code == 200, rp.text
+        rp_data = rp.json()
+        assert rp_data["ok"] is True
+        assert "preview_lock_link" in rp_data, f"missing preview_lock_link: {rp_data}"
+        lock_token = rp_data["preview_lock_link"].split("token=")[-1]
+
+        # Reusing the same reset token -> 400
+        reused = requests.post(f"{API}/auth/reset-password",
+                               json={"token": token, "new_password": "another"})
+        assert reused.status_code == 400
+
+        # Old password no longer works; new one works
+        bad = requests.post(f"{API}/auth/login",
+                            json={"email": email, "password": original_pw})
+        assert bad.status_code == 401
+        good = requests.post(f"{API}/auth/login",
+                             json={"email": email, "password": new_pw})
+        assert good.status_code == 200
+
+        # lock-account freezes the account
+        la = requests.post(f"{API}/auth/lock-account", json={"token": lock_token})
+        assert la.status_code == 200, la.text
+        assert la.json()["ok"] is True
+
+        # Now login with correct password returns 403 (frozen)
+        r = requests.post(f"{API}/auth/login",
+                          json={"email": email, "password": new_pw})
+        assert r.status_code == 403
+        assert "frozen" in r.json().get("detail", "").lower()
+
+        # Reusing the lock token -> 400
+        r2 = requests.post(f"{API}/auth/lock-account", json={"token": lock_token})
+        assert r2.status_code == 400
+
+    def test_forgot_unknown_email_still_ok(self):
+        # Must not leak existence
+        r = requests.post(f"{API}/auth/forgot-password",
+                          json={"email": f"ghost_{uuid.uuid4().hex[:6]}@nowhere.io"})
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+        assert "preview_reset_link" not in r.json()
+
+    def test_reset_with_invalid_token(self):
+        r = requests.post(f"{API}/auth/reset-password",
+                          json={"token": "not-a-real-token", "new_password": "whatever123"})
+        assert r.status_code == 400
+
+
+# ------------- Admin security / lockouts -------------
+class TestAdminLockouts:
+    def test_lockouts_endpoint_lists_trapped_email(self, super_session):
+        sup_s, _ = super_session
+        # Seed a fresh locked email
+        email = f"test_lockadmin_{uuid.uuid4().hex[:8]}@example.com"
+        s = requests.Session()
+        s.post(f"{API}/auth/register", json={
+            "email": email, "password": "password123",
+            "owner_name": "Lock Admin", "business_name": "TEST_LockAdminOutlet",
+            "business_type": "salon", "state": "Maharashtra", "pincode": "400001",
+        })
+        for _ in range(5):
+            requests.post(f"{API}/auth/login",
+                          json={"email": email, "password": "wrong"})
+
+        r = sup_s.get(f"{API}/admin/security/lockouts")
+        assert r.status_code == 200
+        rows = r.json()
+        assert isinstance(rows, list)
+        match = [row for row in rows if row["email"] == email]
+        assert len(match) == 1, f"expected lockout row for {email}: {rows}"
+        row = match[0]
+        assert row["failed_attempts"] >= 5
+        assert row["is_locked"] is True
+        assert row["unlock_at"]
+
+        # clear
+        clr = sup_s.delete(f"{API}/admin/security/lockouts/{email}")
+        assert clr.status_code == 200
+        assert clr.json()["cleared"] >= 5
+
+        # cleared from list
+        r2 = sup_s.get(f"{API}/admin/security/lockouts")
+        assert not any(row["email"] == email for row in r2.json())
+
+    def test_lockouts_endpoints_forbidden_for_owner(self, owner_session):
+        s, _ = owner_session
+        r = s.get(f"{API}/admin/security/lockouts")
+        assert r.status_code == 403
+        r = s.delete(f"{API}/admin/security/lockouts/any@x.io")
+        assert r.status_code == 403
+
+    def test_lockouts_endpoints_unauth(self):
+        assert requests.get(f"{API}/admin/security/lockouts").status_code == 401
+        assert requests.delete(f"{API}/admin/security/lockouts/x@y.io").status_code == 401
+
+
+# ------------- Public queue endpoints (added in refactor) -------------
+class TestPublicQueueAndJoin:
+    def test_queue_summary_shape(self):
+        r = requests.get(f"{API}/public/business/{DEMO_ID_1}/queue-summary")
+        assert r.status_code == 200
+        data = r.json()
+        for k in ("waiting_count", "serving_count", "total_chairs", "business"):
+            assert k in data, f"missing key '{k}' in {data}"
+        assert isinstance(data["waiting_count"], int)
+        assert data["business"]["id"] == DEMO_ID_1
+
+    def test_join_creates_ticket_and_public_ticket_lookup(self):
+        body = {"customer_name": f"TEST_PubJoin_{uuid.uuid4().hex[:4]}",
+                "customer_phone": "9990001111", "party_size": 1}
+        r = requests.post(f"{API}/public/business/{DEMO_ID_1}/join", json=body)
+        assert r.status_code == 200, r.text
+        t = r.json()
+        assert t["business_id"] == DEMO_ID_1
+        assert t["status"] == "waiting"
+        tid = t["id"]
+        # public ticket lookup — wrapped in {ticket, position, estimated_wait_minutes, business}
+        r2 = requests.get(f"{API}/public/ticket/{tid}")
+        assert r2.status_code == 200, r2.text
+        data = r2.json()
+        assert "ticket" in data and "position" in data and "business" in data
+        assert data["ticket"]["id"] == tid
+        assert data["business"]["id"] == DEMO_ID_1
+        assert isinstance(data["position"], int)
+

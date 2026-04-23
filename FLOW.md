@@ -3,7 +3,7 @@
 > One place to understand how the Salon Queue app works end-to-end — for you, future agents, and anyone joining the project.
 > Updated on every feature / bug-fix iteration.
 
-**Last updated**: 2026-02 — iteration 8 (security-alert "lock my account" flow)
+**Last updated**: 2026-02 — iteration 10 (backend modular refactor + customer QR poster + owner onboarding wizard)
 
 ---
 
@@ -27,7 +27,8 @@ Three audiences use it:
 ### 2.1 Owner flow
 1. Visit `/` → click **Create account**.
 2. On `/register`, enter name, email, password, business name/type, address, **state + pincode (required)**. `total_chairs` is NOT asked — defaults to 1 and is editable in Settings.
-3. After register → redirected to `/dashboard` → auto-redirected to `/dashboard/{first-outlet-id}`.
+3. After register → redirected to **`/dashboard/{first-outlet-id}/onboarding`** (4-step wizard: welcome → set stations → share customer QR → open TV display). Owner can click **Skip for now** to jump straight to the dashboard. Completion is remembered in `localStorage` under `gonext:onboarded:{userId}`.
+4. From the dashboard, the QR card has a **Print poster for reception** link that opens `/dashboard/{id}/qr-poster` — a printable A4 poster with the outlet name, branding and the customer join QR.
 4. Dashboard header shows an **outlet switcher** and three tabs: **Live queue · Analytics · Settings**.
 5. Use the header to add more outlets (Outlets page), switch between them, or go to Analytics / Settings for the selected outlet.
 
@@ -264,6 +265,16 @@ React (frontend) ── axios withCredentials ──► FastAPI (/api)
 
 ### v1 — 2026-02 (initial rebuild)
 - Rebuilt the Next.js + Supabase repo as React + FastAPI + MongoDB with JWT auth.
+- Landing, Login, Register, single-outlet Dashboard, Settings, Customer Join + live Ticket status, QR code download/copy.
+
+---
+
+## 10. How this document is maintained
+
+**Rule**: every time a feature is added, a bug is fixed, or a route changes, update the relevant section(s) of this file **and** add a short bullet to the change log with the date. Keep sections concise — link to code if needed, don't duplicate it.
+
+When unsure whether a change belongs here, ask: *"Would a new developer or the user themself need to know this to understand the app?"* If yes, update.
+with JWT auth.
 - Landing, Login, Register, single-outlet Dashboard, Settings, Customer Join + live Ticket status, QR code download/copy.
 
 ---

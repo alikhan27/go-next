@@ -15,7 +15,7 @@ import { Badge } from "../components/ui/badge";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import {
-  Plus, UserPlus, Check, X, ChevronRight, Download, Copy, Tv, UserX,
+  Plus, UserPlus, Check, X, ChevronRight, Download, Copy, Tv, UserX, Printer,
 } from "lucide-react";
 
 function StatCard({ label, value, accent, testid }) {
@@ -315,6 +315,16 @@ export default function Dashboard() {
                   <Download className="h-4 w-4 mr-1.5" /> SVG
                 </Button>
               </div>
+              <Link
+                to={`/dashboard/${business.id}/qr-poster`}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="open-qr-poster"
+              >
+                <Button variant="ghost" className="mt-2 w-full rounded-full text-[#A86246] hover:bg-[#F4EFE8]">
+                  <Printer className="h-4 w-4 mr-1.5" /> Print poster for reception
+                </Button>
+              </Link>
               <p className="mt-3 text-[11px] break-all text-stone-500">{joinUrl}</p>
             </div>
 
