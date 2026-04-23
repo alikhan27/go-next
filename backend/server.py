@@ -101,7 +101,8 @@ class RegisterRequest(BaseModel):
     business_type: str = "salon"
     address: str = ""
     city: str = ""
-    total_chairs: int = Field(ge=1, le=100, default=3)
+    state: str = Field(min_length=1)
+    pincode: str = Field(min_length=3, max_length=12)
 
 
 class LoginRequest(BaseModel):
@@ -114,6 +115,8 @@ class UpdateBusinessRequest(BaseModel):
     business_type: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
     total_chairs: Optional[int] = Field(default=None, ge=1, le=100)
     token_limit: Optional[int] = Field(default=None, ge=1, le=1000)
     is_online: Optional[bool] = None
@@ -145,6 +148,8 @@ def public_business(b: dict) -> dict:
         "business_type": b.get("business_type", "salon"),
         "address": b.get("address", ""),
         "city": b.get("city", ""),
+        "state": b.get("state", ""),
+        "pincode": b.get("pincode", ""),
         "total_chairs": b.get("total_chairs", 1),
         "token_limit": b.get("token_limit", 100),
         "is_online": b.get("is_online", True),
@@ -210,7 +215,9 @@ async def register(body: RegisterRequest, response: Response):
         "business_type": body.business_type,
         "address": body.address,
         "city": body.city,
-        "total_chairs": body.total_chairs,
+        "state": body.state,
+        "pincode": body.pincode,
+        "total_chairs": 1,
         "token_limit": 100,
         "is_online": True,
         "station_label": "Station",
@@ -522,7 +529,9 @@ async def on_start():
             "business_name": "Amara Studio",
             "business_type": "salon",
             "address": "221 Baker Street",
-            "city": "London",
+            "city": "Mumbai",
+            "state": "Maharashtra",
+            "pincode": "400001",
             "total_chairs": 4,
             "token_limit": 100,
             "is_online": True,

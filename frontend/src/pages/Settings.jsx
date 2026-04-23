@@ -22,6 +22,8 @@ export default function Settings() {
         business_type: auth.business.business_type || "salon",
         address: auth.business.address || "",
         city: auth.business.city || "",
+        state: auth.business.state || "",
+        pincode: auth.business.pincode || "",
         total_chairs: auth.business.total_chairs || 1,
         token_limit: auth.business.token_limit || 100,
         is_online: !!auth.business.is_online,
@@ -85,6 +87,16 @@ export default function Settings() {
               <Label>City</Label>
               <Input className="mt-1.5 h-11" value={form.city}
                 onChange={(e) => set("city")(e.target.value)} data-testid="settings-city" />
+            </div>
+            <div>
+              <Label>State</Label>
+              <Input className="mt-1.5 h-11" value={form.state}
+                onChange={(e) => set("state")(e.target.value)} data-testid="settings-state" />
+            </div>
+            <div>
+              <Label>Pincode</Label>
+              <Input className="mt-1.5 h-11" value={form.pincode}
+                onChange={(e) => set("pincode")(e.target.value)} data-testid="settings-pincode" />
             </div>
             <div>
               <Label>Stations / chairs</Label>

@@ -10,7 +10,7 @@ import { formatApiErrorDetail } from "../lib/api";
 export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [email, setEmail] = useState("admin@gonext.com");
+  const [email, setEmail] = useState("admin@go-next.in");
   const [password, setPassword] = useState("admin123");
   const [loading, setLoading] = useState(false);
 
@@ -98,7 +98,7 @@ export default function Login() {
             </Link>
           </p>
           <p className="mt-2 text-xs text-stone-500">
-            Demo: admin@gonext.com · admin123
+            Demo: admin@go-next.in · admin123
           </p>
         </div>
       </div>
