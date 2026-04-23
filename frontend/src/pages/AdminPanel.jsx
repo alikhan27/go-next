@@ -20,7 +20,7 @@ import {
 } from "../components/ui/alert-dialog";
 import { toast } from "sonner";
 import {
-  ChevronDown, LogOut, Users, Building2, LayoutDashboard, ArrowUpRight, Shield, Trash2, Tv,
+  ChevronDown, LogOut, Users, Building2, LayoutDashboard, ArrowUpRight, Shield, Trash2, Tv, ShieldCheck, KeyRound,
 } from "lucide-react";
 
 function Stat({ label, value, accent, hint, testid }) {
@@ -39,19 +39,22 @@ export default function AdminPanel() {
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [outlets, setOutlets] = useState([]);
+  const [lockouts, setLockouts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, u, o] = await Promise.all([
+      const [s, u, o, l] = await Promise.all([
         api.get("/admin/stats"),
         api.get("/admin/users"),
         api.get("/admin/businesses"),
+        api.get("/admin/security/lockouts"),
       ]);
       setStats(s.data);
       setUsers(u.data);
       setOutlets(o.data);
+      setLockouts(l.data);
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
     } finally {
@@ -77,6 +80,16 @@ export default function AdminPanel() {
     try {
       await api.delete(`/admin/businesses/${id}`);
       toast.success("Outlet deleted");
+      load();
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    }
+  };
+
+  const clearLockout = async (email) => {
+    try {
+      await api.delete(`/admin/security/lockouts/${encodeURIComponent(email)}`);
+      toast.success(`Unlocked ${email}`);
       load();
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
@@ -152,6 +165,12 @@ export default function AdminPanel() {
             </TabsTrigger>
             <TabsTrigger value="overview" className="rounded-full data-[state=active]:bg-[#F4EFE8] data-[state=active]:text-[#A86246]" data-testid="admin-tab-overview">
               <LayoutDashboard className="h-3.5 w-3.5 mr-1.5" /> Overview
+            </TabsTrigger>
+            <TabsTrigger value="security" className="rounded-full data-[state=active]:bg-[#F4EFE8] data-[state=active]:text-[#A86246]" data-testid="admin-tab-security">
+              <ShieldCheck className="h-3.5 w-3.5 mr-1.5" /> Security
+              {lockouts.some((l) => l.is_locked) && (
+                <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-red-500" />
+              )}
             </TabsTrigger>
           </TabsList>
 
@@ -289,6 +308,66 @@ export default function AdminPanel() {
               <Stat label="Free owners" value={stats?.free_users ?? "—"} />
               <Stat label="Premium owners" value={stats?.premium_users ?? "—"} accent="text-[#A86246]" />
               <Stat label="Conversion" value={stats && stats.total_users ? `${Math.round((stats.premium_users / stats.total_users) * 100)}%` : "—"} hint="of owners on Premium" />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="security" className="mt-6">
+            <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden" data-testid="admin-security-table">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 px-5 py-4">
+                <div>
+                  <h3 className="font-serif-display text-xl leading-none flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4 text-[#4c6547]" /> Account lockouts
+                  </h3>
+                  <p className="mt-1 text-xs text-stone-500">
+                    5 failed logins within 15 minutes locks the account. Clear a lockout to help a genuine user log back in immediately.
+                  </p>
+                </div>
+                <span className="text-[10px] uppercase tracking-[0.22em] text-stone-500">
+                  {lockouts.filter((l) => l.is_locked).length} locked · {lockouts.length} tracked
+                </span>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Email</TableHead>
+                    <TableHead className="text-center">Failed attempts</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Unlocks in</TableHead>
+                    <TableHead className="text-right pr-5">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading && (
+                    <TableRow><TableCell colSpan={5} className="text-center py-10 text-stone-500">Loading…</TableCell></TableRow>
+                  )}
+                  {!loading && lockouts.length === 0 && (
+                    <TableRow><TableCell colSpan={5} className="text-center py-10 text-stone-500">No recent failed logins. All quiet.</TableCell></TableRow>
+                  )}
+                  {lockouts.map((l) => (
+                    <TableRow key={l.email} data-testid={`lockout-row-${l.email}`}>
+                      <TableCell className="font-medium">{l.email}</TableCell>
+                      <TableCell className="text-center">{l.failed_attempts}</TableCell>
+                      <TableCell>
+                        {l.is_locked ? (
+                          <Badge className="rounded-full border font-normal bg-red-50 text-red-600 border-red-100">Locked</Badge>
+                        ) : (
+                          <Badge className="rounded-full border font-normal bg-stone-100 text-stone-600 border-stone-200">Warned</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-stone-600 text-sm">
+                        {l.is_locked ? `${l.unlock_in_minutes} min` : "—"}
+                      </TableCell>
+                      <TableCell className="text-right pr-5">
+                        <Button size="sm" variant="outline" className="rounded-full border-stone-300"
+                          onClick={() => clearLockout(l.email)}
+                          data-testid={`clear-lockout-${l.email}`}>
+                          <KeyRound className="h-3.5 w-3.5 mr-1.5" /> Unlock
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           </TabsContent>
         </Tabs>

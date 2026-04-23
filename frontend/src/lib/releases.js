@@ -1,9 +1,49 @@
 // Single source of truth for the "What's new" feed inside the app.
 // When adding a new release, bump LATEST_VERSION and prepend an entry.
 
-export const LATEST_VERSION = "v2.2";
+export const LATEST_VERSION = "v2.4";
 
 export const RELEASES = [
+  {
+    version: "v2.4",
+    date: "Feb 2026",
+    title: "Security tab in the admin console",
+    tag: "Security",
+    highlights: [
+      {
+        heading: "Lockout visibility",
+        body: "The super admin can now see every email that's been locked out or is approaching the threshold, with a live countdown until automatic unlock.",
+      },
+      {
+        heading: "One-click unlock",
+        body: "If a genuine owner gets locked out, the platform admin can clear the lockout instantly instead of asking them to wait 15 minutes.",
+      },
+      {
+        heading: "Red-dot indicator",
+        body: "The Security tab shows a small red dot whenever at least one account is currently locked, so issues surface without having to go looking.",
+      },
+    ],
+  },
+  {
+    version: "v2.3",
+    date: "Feb 2026",
+    title: "Brute-force lockout on sign-in",
+    tag: "Security",
+    highlights: [
+      {
+        heading: "Account lockout after 5 failed attempts",
+        body: "If a sign-in attempt uses the wrong password 5 times within 15 minutes, the account is temporarily locked and the API responds with 429. A successful sign-in resets the counter instantly.",
+      },
+      {
+        heading: "Password guessing is now expensive",
+        body: "A bot that used to try thousands of passwords per minute now gets 5 shots every 15 minutes per email — turning a few-minute attack into months of waiting.",
+      },
+      {
+        heading: "No impact on honest users",
+        body: "Mistype your password? Just try again. Once you get it right, the counter clears. No email or account reset needed.",
+      },
+    ],
+  },
   {
     version: "v2.2",
     date: "Feb 2026",

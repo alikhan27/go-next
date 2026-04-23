@@ -3,7 +3,7 @@
 > One place to understand how the Salon Queue app works end-to-end — for you, future agents, and anyone joining the project.
 > Updated on every feature / bug-fix iteration.
 
-**Last updated**: 2026-02 — iteration 4 (Free/Premium plans + Super admin panel)
+**Last updated**: 2026-02 — iteration 6 (Security tab in admin panel)
 
 ---
 
@@ -135,13 +135,15 @@ All routes are under `/api`.
 | GET    | `/business/{id}/analytics?days=N`             | 1 ≤ N ≤ 90, default 14                   |
 
 ### Super admin (role=super_admin)
-| Method | Path                              | Notes                                         |
-| ------ | --------------------------------- | --------------------------------------------- |
-| GET    | `/admin/stats`                    | Platform-wide counts                          |
-| GET    | `/admin/users`                    | Owners with plan + outlet count               |
-| PATCH  | `/admin/users/{id}`               | `{plan: "free" | "premium"}`                  |
-| GET    | `/admin/businesses`               | Every outlet across owners                    |
-| DELETE | `/admin/businesses/{id}`          | Delete any outlet (cascades to tickets)       |
+| Method | Path                                           | Notes                                         |
+| ------ | ---------------------------------------------- | --------------------------------------------- |
+| GET    | `/admin/stats`                                 | Platform-wide counts                          |
+| GET    | `/admin/users`                                 | Owners with plan + outlet count               |
+| PATCH  | `/admin/users/{id}`                            | `{plan: "free" | "premium"}`                  |
+| GET    | `/admin/businesses`                            | Every outlet across owners                    |
+| DELETE | `/admin/businesses/{id}`                       | Delete any outlet (cascades to tickets)       |
+| GET    | `/admin/security/lockouts`                     | List locked/warned accounts with unlock ETA   |
+| DELETE | `/admin/security/lockouts/{email}`             | Clear a specific account's login attempts    |
 
 ### Public (no auth)
 | Method | Path                                           | Notes                                        |
@@ -214,7 +216,13 @@ React (frontend) ── axios withCredentials ──► FastAPI (/api)
 
 ## 9. Change log
 
-### v2.2 — 2026-02 (current)
+### v2.4 — 2026-02 (current)
+- **Security tab in `/admin`**. Super admin can now see every recently-locked-out account (with live countdown) and clear a lockout in one click. Backed by `GET /api/admin/security/lockouts` + `DELETE /api/admin/security/lockouts/{email}`. Tab shows a small red dot whenever at least one account is currently locked.
+
+### v2.3 — 2026-02
+- **Brute-force lockout on `/api/auth/login`.** After 5 failed attempts for the same email within 15 minutes the endpoint returns `429 Too many failed attempts. Try again in N minute(s).` A successful login (or the 15-minute window expiring) clears the counter. Backed by a new `login_attempts` collection with a MongoDB TTL index (auto-deletes attempts after the window). Constants `LOCKOUT_THRESHOLD=5` and `LOCKOUT_WINDOW_MINUTES=15` live in `server.py`. The lockout key is the email (standard account-lockout pattern) because our K8s ingress rotates proxy IPs, which would otherwise under-count attempts.
+
+### v2.2 — 2026-02
 - **Free / Premium plans.**
   - Free: 1 outlet, 2 stations, 50 tokens/day, 14-day analytics.
   - Premium: 10 outlets, 100 stations, 1000 tokens/day, 90-day analytics, TV display.

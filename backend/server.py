@@ -29,6 +29,10 @@ api = APIRouter(prefix="/api")
 
 JWT_ALGORITHM = "HS256"
 
+# Brute-force protection for /api/auth/login
+LOCKOUT_THRESHOLD = 5            # failures allowed per window
+LOCKOUT_WINDOW_MINUTES = 15      # window + cool-off duration
+
 
 def jwt_secret() -> str:
     return os.environ["JWT_SECRET"]
@@ -138,6 +142,44 @@ def require_super_admin(user: dict) -> dict:
     if (user or {}).get("role") != "super_admin":
         raise HTTPException(status_code=403, detail="Super admin access required")
     return user
+
+
+# ----------------- Brute-force protection -----------------
+async def _recent_attempts(identifier: str) -> list:
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_WINDOW_MINUTES)
+    return (
+        await db.login_attempts.find(
+            {"identifier": identifier, "attempted_at": {"$gte": cutoff}}
+        )
+        .sort("attempted_at", 1)
+        .to_list(100)
+    )
+
+
+async def record_failed_attempt(identifier: str) -> None:
+    await db.login_attempts.insert_one(
+        {"identifier": identifier, "attempted_at": datetime.now(timezone.utc)}
+    )
+
+
+async def clear_attempts(identifier: str) -> None:
+    await db.login_attempts.delete_many({"identifier": identifier})
+
+
+async def enforce_lockout(identifier: str) -> None:
+    attempts = await _recent_attempts(identifier)
+    if len(attempts) < LOCKOUT_THRESHOLD:
+        return
+    oldest = attempts[0]["attempted_at"]
+    if oldest.tzinfo is None:
+        oldest = oldest.replace(tzinfo=timezone.utc)
+    unlock_at = oldest + timedelta(minutes=LOCKOUT_WINDOW_MINUTES)
+    remaining_seconds = (unlock_at - datetime.now(timezone.utc)).total_seconds()
+    remaining_minutes = max(1, int((remaining_seconds + 59) // 60))
+    raise HTTPException(
+        status_code=429,
+        detail=f"Too many failed attempts. Try again in {remaining_minutes} minute(s).",
+    )
 
 
 # ----------------- Models -----------------
@@ -321,11 +363,20 @@ async def register(body: RegisterRequest, response: Response):
 
 
 @api.post("/auth/login")
-async def login(body: LoginRequest, response: Response):
+async def login(body: LoginRequest, request: Request, response: Response):
     email = body.email.lower().strip()
+    # Lock the account regardless of source IP — K8s ingress rotates
+    # across proxy IPs so keying on client.host under-counts attempts.
+    identifier = f"email:{email}"
+
+    await enforce_lockout(identifier)
+
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(body.password, user["password_hash"]):
+        await record_failed_attempt(identifier)
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    await clear_attempts(identifier)
 
     token = create_access_token(user["id"], email)
     set_auth_cookie(response, token)
@@ -868,6 +919,54 @@ async def admin_delete_business(business_id: str, user: dict = Depends(get_curre
         raise HTTPException(status_code=404, detail="Outlet not found")
     await db.queue.delete_many({"business_id": business_id})
     return {"ok": True}
+
+
+@api.get("/admin/security/lockouts")
+async def admin_list_lockouts(user: dict = Depends(get_current_user)):
+    require_super_admin(user)
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_WINDOW_MINUTES)
+    pipeline = [
+        {"$match": {"attempted_at": {"$gte": cutoff}}},
+        {
+            "$group": {
+                "_id": "$identifier",
+                "count": {"$sum": 1},
+                "last_attempt_at": {"$max": "$attempted_at"},
+                "first_attempt_at": {"$min": "$attempted_at"},
+            }
+        },
+        {"$sort": {"count": -1, "last_attempt_at": -1}},
+    ]
+    rows = await db.login_attempts.aggregate(pipeline).to_list(500)
+    out = []
+    now = datetime.now(timezone.utc)
+    for r in rows:
+        ident = r.get("_id") or ""
+        email = ident.split(":", 1)[1] if ident.startswith("email:") else ident
+        first = r.get("first_attempt_at")
+        if first and first.tzinfo is None:
+            first = first.replace(tzinfo=timezone.utc)
+        unlock_at = first + timedelta(minutes=LOCKOUT_WINDOW_MINUTES) if first else None
+        is_locked = r["count"] >= LOCKOUT_THRESHOLD
+        out.append({
+            "email": email,
+            "failed_attempts": r["count"],
+            "is_locked": is_locked,
+            "first_attempt_at": first.isoformat() if first else None,
+            "last_attempt_at": r.get("last_attempt_at").isoformat() if r.get("last_attempt_at") else None,
+            "unlock_at": unlock_at.isoformat() if unlock_at else None,
+            "unlock_in_minutes": max(0, int(((unlock_at - now).total_seconds() + 59) // 60)) if (unlock_at and is_locked) else 0,
+        })
+    return out
+
+
+@api.delete("/admin/security/lockouts/{email}")
+async def admin_clear_lockout(email: str, user: dict = Depends(get_current_user)):
+    require_super_admin(user)
+    email = email.lower().strip()
+    identifier = f"email:{email}"
+    res = await db.login_attempts.delete_many({"identifier": identifier})
+    return {"ok": True, "cleared": res.deleted_count}
 
 
 # ----------------- Startup -----------------
