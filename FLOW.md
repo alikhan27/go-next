@@ -3,7 +3,7 @@
 > One place to understand how the Salon Queue app works end-to-end — for you, future agents, and anyone joining the project.
 > Updated on every feature / bug-fix iteration.
 
-**Last updated**: 2026-02 — iteration 7 (forgot-password flow, preview mode)
+**Last updated**: 2026-02 — iteration 8 (security-alert "lock my account" flow)
 
 ---
 
@@ -119,7 +119,8 @@ All routes are under `/api`.
 | POST   | `/auth/logout`           | clears cookie                                                    |
 | GET    | `/auth/me`               | returns `{user, businesses: [...]}`                              |
 | POST   | `/auth/forgot-password`  | body `{email}`; returns 200 always; in preview mode includes `preview_reset_link` |
-| POST   | `/auth/reset-password`   | body `{token, new_password}`; single-use; 30-min TTL             |
+| POST   | `/auth/reset-password`   | body `{token, new_password}`; single-use; 30-min TTL; response also includes `preview_lock_link` (24 h) |
+| POST   | `/auth/lock-account`     | body `{token}`; freezes the account (security alert flow)         |
 
 ### Business (owner, authenticated)
 | Method | Path                                          | Notes                                    |
@@ -218,7 +219,13 @@ React (frontend) ── axios withCredentials ──► FastAPI (/api)
 
 ## 9. Change log
 
-### v2.5 — 2026-02 (current)
+### v2.6 — 2026-02 (current)
+- **Post-reset security alert**. `POST /api/auth/reset-password` now also issues a one-time **account-lock** token (24 h TTL, stored in `account_lock_tokens`). In preview mode the response includes `preview_lock_link`, rendered on the reset-success page as a red "Wasn't you?" card with Copy / Lock my account buttons.
+- New endpoint `POST /api/auth/lock-account` + public page `/lock-account?token=…` — confirmation screen → sets `user.is_locked = true` + `locked_reason` + invalidates other outstanding reset tokens.
+- Login endpoint now returns **403** "Account frozen for safety…" whenever `user.is_locked` is true — even with the correct password.
+- Admin **Owners** tab shows a red **Frozen** badge + a **Restore** button. `PATCH /api/admin/users/{id}` extended to accept `{is_locked: false}`; unlock also clears login throttling on that email.
+
+### v2.5 — 2026-02
 - **Forgot-password flow.** New routes `/forgot-password` + `/reset-password?token=…`. Backend endpoints `POST /api/auth/forgot-password` and `POST /api/auth/reset-password`.
   - Tokens are 43-char URL-safe random strings stored in `password_resets` with a MongoDB TTL index on `expires_at` (30-minute lifespan).
   - Tokens can be used once — second use returns 400 "already been used".

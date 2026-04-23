@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
-import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ShieldAlert, Copy } from "lucide-react";
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -36,6 +36,16 @@ export default function ResetPassword() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const copyLink = (value) => {
+    navigator.clipboard.writeText(value);
+    toast.success("Link copied");
+  };
+
+  const openLocal = (absoluteUrl) => {
+    const u = new URL(absoluteUrl);
+    navigate(u.pathname + u.search);
   };
 
   return (
@@ -74,15 +84,48 @@ export default function ResetPassword() {
             )}
           </form>
         ) : (
-          <div className="mt-8 rounded-2xl border border-stone-200 bg-white p-6 text-center" data-testid="reset-success">
-            <CheckCircle2 className="h-10 w-10 text-[#7D9276] mx-auto" />
-            <p className="font-serif-display text-2xl mt-3">Password updated</p>
-            <p className="mt-1 text-sm text-stone-600">You can now sign in with your new password.</p>
+          <div className="mt-8 rounded-2xl border border-stone-200 bg-white p-6" data-testid="reset-success">
+            <div className="text-center">
+              <CheckCircle2 className="h-10 w-10 text-[#7D9276] mx-auto" />
+              <p className="font-serif-display text-2xl mt-3">Password updated</p>
+              <p className="mt-1 text-sm text-stone-600">You can now sign in with your new password.</p>
+            </div>
+
             <Button onClick={() => navigate("/login")}
               className="mt-6 w-full h-11 rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white press"
               data-testid="reset-to-login">
               Go to sign in
             </Button>
+
+            {done.preview_lock_link && (
+              <div className="mt-6 rounded-xl border border-red-200 bg-red-50/60 p-4" data-testid="lock-alert-card">
+                <div className="flex items-start gap-2">
+                  <ShieldAlert className="h-4 w-4 text-red-600 mt-0.5 flex-none" />
+                  <div>
+                    <p className="text-sm font-medium text-red-700">Wasn&apos;t you?</p>
+                    <p className="text-xs text-stone-700 mt-1">
+                      We&apos;d normally email a second link to lock your account if this reset wasn&apos;t you. In preview we&apos;re showing it here. Link is valid for {done.lock_ttl_hours} hours and can only be used once.
+                    </p>
+                    <p className="mt-2 text-[11px] text-stone-500 break-all" data-testid="lock-preview-link">
+                      {done.preview_lock_link}
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <Button onClick={() => copyLink(done.preview_lock_link)}
+                        variant="outline" className="flex-1 rounded-full border-stone-300 bg-white"
+                        data-testid="lock-preview-copy">
+                        <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy
+                      </Button>
+                      <Button onClick={() => openLocal(done.preview_lock_link)}
+                        variant="outline"
+                        className="flex-1 rounded-full border-red-300 text-red-700 bg-white hover:bg-red-50"
+                        data-testid="lock-preview-open">
+                        Lock my account
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -39,6 +39,12 @@ LOCKOUT_WINDOW_MINUTES = 15      # window + cool-off duration
 PASSWORD_RESET_TTL_MINUTES = 30
 PASSWORD_RESET_PREVIEW_MODE = True
 
+# Account-freeze token issued after a password reset. If the real owner
+# didn't reset it, clicking this link locks the account so an admin can
+# intervene. Longer TTL (24 h) because security alerts need to sit in an
+# inbox for a while.
+ACCOUNT_LOCK_TTL_MINUTES = 60 * 24
+
 
 def jwt_secret() -> str:
     return os.environ["JWT_SECRET"]
@@ -213,6 +219,10 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str = Field(min_length=16, max_length=128)
     new_password: str = Field(min_length=6)
+
+
+class LockAccountRequest(BaseModel):
+    token: str = Field(min_length=16, max_length=128)
 
 
 class CreateBusinessRequest(BaseModel):
@@ -391,6 +401,12 @@ async def login(body: LoginRequest, request: Request, response: Response):
         await record_failed_attempt(identifier)
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
+    if user.get("is_locked"):
+        raise HTTPException(
+            status_code=403,
+            detail="This account has been frozen for safety. Contact support to restore access.",
+        )
+
     await clear_attempts(identifier)
 
     token = create_access_token(user["id"], email)
@@ -454,7 +470,7 @@ async def forgot_password(body: ForgotPasswordRequest, request: Request):
 
 
 @api.post("/auth/reset-password")
-async def reset_password(body: ResetPasswordRequest):
+async def reset_password(body: ResetPasswordRequest, request: Request):
     record = await db.password_resets.find_one({"token": body.token}, {"_id": 0})
     if not record:
         raise HTTPException(status_code=400, detail="Invalid or expired reset link")
@@ -482,6 +498,65 @@ async def reset_password(body: ResetPasswordRequest):
     )
     # Unlock any login attempts for this email
     await clear_attempts(f"email:{user['email']}")
+
+    # Issue a follow-up "lock my account" token for the security-alert flow
+    now = datetime.now(timezone.utc)
+    lock_token = secrets.token_urlsafe(32)
+    await db.account_lock_tokens.insert_one({
+        "token": lock_token,
+        "user_id": user["id"],
+        "email": user["email"],
+        "created_at": now,
+        "expires_at": now + timedelta(minutes=ACCOUNT_LOCK_TTL_MINUTES),
+        "used_at": None,
+    })
+    origin = request.headers.get("origin") or request.headers.get("referer") or str(request.base_url)
+    origin = origin.rstrip("/")
+    if origin.count("/") > 2:
+        origin = "/".join(origin.split("/")[:3])
+    lock_link = f"{origin}/lock-account?token={lock_token}"
+
+    response_body = {
+        "ok": True,
+        "email": user["email"],
+        "lock_ttl_hours": ACCOUNT_LOCK_TTL_MINUTES // 60,
+    }
+    if PASSWORD_RESET_PREVIEW_MODE:
+        response_body["preview_lock_link"] = lock_link
+    return response_body
+
+
+@api.post("/auth/lock-account")
+async def lock_account(body: LockAccountRequest):
+    record = await db.account_lock_tokens.find_one({"token": body.token}, {"_id": 0})
+    if not record:
+        raise HTTPException(status_code=400, detail="Invalid or expired lock link")
+    if record.get("used_at"):
+        raise HTTPException(status_code=400, detail="This lock link has already been used")
+    expires_at = record.get("expires_at")
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if not expires_at or expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="This lock link has expired")
+
+    user = await db.users.find_one({"id": record["user_id"]})
+    if not user:
+        raise HTTPException(status_code=400, detail="Account no longer exists")
+
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"is_locked": True, "locked_at": datetime.now(timezone.utc).isoformat(), "locked_reason": "user_reported_unauthorized_reset"}},
+    )
+    await db.account_lock_tokens.update_one(
+        {"token": body.token},
+        {"$set": {"used_at": datetime.now(timezone.utc)}},
+    )
+    # Invalidate any other outstanding reset tokens + force sign-out everywhere
+    await db.password_resets.delete_many({"user_id": user["id"], "used_at": None})
+    await db.account_lock_tokens.update_many(
+        {"user_id": user["id"], "used_at": None},
+        {"$set": {"used_at": datetime.now(timezone.utc)}},
+    )
     return {"ok": True, "email": user["email"]}
 
 
@@ -919,6 +994,7 @@ async def plans():
 # ----------------- Super Admin -----------------
 class AdminUserUpdate(BaseModel):
     plan: Optional[Literal["free", "premium"]] = None
+    is_locked: Optional[bool] = None
 
 
 @api.get("/admin/stats")
@@ -958,6 +1034,9 @@ async def admin_users(user: dict = Depends(get_current_user)):
             "plan": u.get("plan", "free"),
             "created_at": u.get("created_at"),
             "outlet_count": count,
+            "is_locked": bool(u.get("is_locked", False)),
+            "locked_at": u.get("locked_at"),
+            "locked_reason": u.get("locked_reason"),
         })
     return out
 
@@ -969,6 +1048,11 @@ async def admin_update_user(user_id: str, body: AdminUserUpdate, user: dict = De
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if updates.get("is_locked") is False:
+        # Unlocking also clears any login throttle on that account
+        updates["locked_at"] = None
+        updates["locked_reason"] = None
+        await clear_attempts(f"email:{target['email']}")
     if updates:
         await db.users.update_one({"id": user_id}, {"$set": updates})
     updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
@@ -1100,6 +1184,17 @@ async def on_start():
     except Exception:
         pass
     await db.password_resets.create_index("user_id")
+
+    # Account lock tokens (security-alert flow): TTL auto-delete at expires_at
+    try:
+        await db.account_lock_tokens.create_index("expires_at", expireAfterSeconds=0)
+    except Exception:
+        pass
+    try:
+        await db.account_lock_tokens.create_index("token", unique=True)
+    except Exception:
+        pass
+    await db.account_lock_tokens.create_index("user_id")
 
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@go-next.in").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")

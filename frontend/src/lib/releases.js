@@ -1,9 +1,33 @@
 // Single source of truth for the "What's new" feed inside the app.
 // When adding a new release, bump LATEST_VERSION and prepend an entry.
 
-export const LATEST_VERSION = "v2.5";
+export const LATEST_VERSION = "v2.6";
 
 export const RELEASES = [
+  {
+    version: "v2.6",
+    date: "Feb 2026",
+    title: "\u201cWasn\u2019t you?\u201d \u2014 one-click account lock",
+    tag: "Security",
+    highlights: [
+      {
+        heading: "Second link after every reset",
+        body: "After you reset your password, we issue a second one-click link (valid 24 hours) that freezes the account if it wasn\u2019t actually you doing the reset.",
+      },
+      {
+        heading: "Frozen accounts can\u2019t sign in",
+        body: "A frozen account returns 403 on login with a clear message. Any outstanding reset links are invalidated. A super admin can restore access with one click.",
+      },
+      {
+        heading: "Admin \u201cRestore\u201d button",
+        body: "The Owners tab in /admin now shows a Frozen badge and a Restore button for any account that\u2019s been locked via this flow.",
+      },
+      {
+        heading: "Preview mode, same shape",
+        body: "We still haven\u2019t wired email in preview. The alert link is shown inline on the reset-success screen so you can try the full flow today.",
+      },
+    ],
+  },
   {
     version: "v2.5",
     date: "Feb 2026",

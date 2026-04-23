@@ -16,6 +16,7 @@ import Display from "./pages/Display";
 import AdminPanel from "./pages/AdminPanel";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import LockAccount from "./pages/LockAccount";
 import NotFound from "./pages/NotFound";
 
 function Protected({ children }) {
@@ -64,6 +65,7 @@ export default function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/lock-account" element={<LockAccount />} />
 
             <Route path="/dashboard" element={<PostLoginRedirect />} />
             <Route path="/dashboard/outlets" element={<Protected><Outlets /></Protected>} />

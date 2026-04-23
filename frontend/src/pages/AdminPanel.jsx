@@ -76,6 +76,16 @@ export default function AdminPanel() {
     }
   };
 
+  const setLocked = async (userId, is_locked) => {
+    try {
+      await api.patch(`/admin/users/${userId}`, { is_locked });
+      toast.success(is_locked ? "Account frozen" : "Account restored");
+      load();
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    }
+  };
+
   const deleteOutlet = async (id) => {
     try {
       await api.delete(`/admin/businesses/${id}`);
@@ -195,27 +205,41 @@ export default function AdminPanel() {
                   )}
                   {users.map((u) => (
                     <TableRow key={u.id} data-testid={`admin-user-row-${u.id}`}>
-                      <TableCell className="font-medium">{u.name || "—"}</TableCell>
+                      <TableCell className="font-medium">
+                        {u.name || "—"}
+                        {u.is_locked && (
+                          <Badge className="ml-2 rounded-full border font-normal bg-red-50 text-red-600 border-red-100">Frozen</Badge>
+                        )}
+                      </TableCell>
                       <TableCell className="text-stone-600">{u.email}</TableCell>
                       <TableCell className="text-center">{u.outlet_count}</TableCell>
                       <TableCell>
                         <Badge className={`rounded-full border font-normal ${planStyle(u.plan)}`}>{u.plan}</Badge>
                       </TableCell>
                       <TableCell className="text-right pr-5">
-                        {u.plan === "premium" ? (
-                          <Button size="sm" variant="outline" className="rounded-full border-stone-300"
-                            onClick={() => setPlan(u.id, "free")}
-                            data-testid={`downgrade-${u.id}`}>
-                            Downgrade
-                          </Button>
-                        ) : (
-                          <Button size="sm"
-                            className="rounded-full bg-[#C47C5C] hover:bg-[#A86246] text-white"
-                            onClick={() => setPlan(u.id, "premium")}
-                            data-testid={`upgrade-${u.id}`}>
-                            <ArrowUpRight className="h-3.5 w-3.5 mr-1" /> Upgrade
-                          </Button>
-                        )}
+                        <div className="flex justify-end gap-2">
+                          {u.is_locked ? (
+                            <Button size="sm" variant="outline" className="rounded-full border-red-200 text-red-700"
+                              onClick={() => setLocked(u.id, false)}
+                              data-testid={`unlock-account-${u.id}`}>
+                              Restore
+                            </Button>
+                          ) : null}
+                          {u.plan === "premium" ? (
+                            <Button size="sm" variant="outline" className="rounded-full border-stone-300"
+                              onClick={() => setPlan(u.id, "free")}
+                              data-testid={`downgrade-${u.id}`}>
+                              Downgrade
+                            </Button>
+                          ) : (
+                            <Button size="sm"
+                              className="rounded-full bg-[#C47C5C] hover:bg-[#A86246] text-white"
+                              onClick={() => setPlan(u.id, "premium")}
+                              data-testid={`upgrade-${u.id}`}>
+                              <ArrowUpRight className="h-3.5 w-3.5 mr-1" /> Upgrade
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
