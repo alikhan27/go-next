@@ -115,6 +115,8 @@ def public_ticket(t: dict) -> dict:
         "service_name": t.get("service_name"),
         "service_duration_minutes": t.get("service_duration_minutes"),
         "service_price": float(t.get("service_price", 0) or 0),
+        "paid": bool(t.get("paid", False)),
+        "paid_at": t.get("paid_at"),
         "created_at": t.get("created_at"),
         "served_at": t.get("served_at"),
         "finished_at": t.get("finished_at"),

@@ -79,6 +79,10 @@ class UpdateStatusRequest(BaseModel):
     status: StatusT
 
 
+class MarkPaidRequest(BaseModel):
+    paid: bool
+
+
 # ---- Services (premium+) ----
 class CreateServiceRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)

@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..db import db
-from ..models import UpdateStatusRequest, WalkInRequest
+from ..models import MarkPaidRequest, UpdateStatusRequest, WalkInRequest
 from ..security import get_current_user
 from ..services import (
     next_token_number,
@@ -105,6 +105,47 @@ async def update_ticket_status(
     return public_ticket(updated)
 
 
+@router.patch("/queue/{ticket_id}/paid")
+async def mark_paid(
+    business_id: str,
+    ticket_id: str,
+    body: MarkPaidRequest,
+    user: dict = Depends(get_current_user),
+):
+    business = await owned_business_or_404(user["id"], business_id)
+    t = await db.queue.find_one({"id": ticket_id, "business_id": business["id"]}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    updates: dict = {"paid": bool(body.paid)}
+    updates["paid_at"] = datetime.now(timezone.utc).isoformat() if body.paid else None
+    await db.queue.update_one({"id": ticket_id}, {"$set": updates})
+    updated = await db.queue.find_one({"id": ticket_id}, {"_id": 0})
+    return public_ticket(updated)
+
+
+@router.get("/recent-completed")
+async def recent_completed(business_id: str, user: dict = Depends(get_current_user)):
+    """Last 10 completed tickets from today — used by the Dashboard so
+    owners can flip the paid toggle after the fact (most salons collect
+    payment after the service, not before)."""
+    await owned_business_or_404(user["id"], business_id)
+    today = datetime.now(timezone.utc).date().isoformat()
+    docs = (
+        await db.queue.find(
+            {
+                "business_id": business_id,
+                "status": "completed",
+                "finished_at": {"$regex": f"^{today}"},
+            },
+            {"_id": 0},
+        )
+        .sort("finished_at", -1)
+        .limit(10)
+        .to_list(10)
+    )
+    return [public_ticket(t) for t in docs]
+
+
 @router.post("/queue/call-next")
 async def call_next(business_id: str, user: dict = Depends(get_current_user)):
     business = await owned_business_or_404(user["id"], business_id)
@@ -161,7 +202,7 @@ async def queue_stats(business_id: str, user: dict = Depends(get_current_user)):
     revenue_pipeline = [
         {"$match": {
             "business_id": business_id,
-            "status": "completed",
+            "paid": True,
             "finished_at": {"$regex": f"^{today}"},
         }},
         {"$group": {"_id": None, "total": {"$sum": {"$ifNull": ["$service_price", 0]}}}},
@@ -219,9 +260,10 @@ async def analytics(
         if status == "completed":
             total_completed += 1
             per_day[day]["completed"] += 1
-            price = float(r.get("service_price") or 0)
-            total_revenue += price
-            per_day[day]["revenue"] += price
+            if r.get("paid"):
+                price = float(r.get("service_price") or 0)
+                total_revenue += price
+                per_day[day]["revenue"] += price
             ref = r.get("served_at") or finished
             try:
                 rdt = datetime.fromisoformat(ref.replace("Z", "+00:00"))
