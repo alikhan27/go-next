@@ -35,11 +35,6 @@ export default function Navbar({ transparent = false }) {
         <nav className="flex items-center gap-2">
           {!isAuthed ? (
             <>
-              <Link to="/join/demo-salon" data-testid="nav-try-demo">
-                <Button variant="ghost" className="rounded-full text-stone-700 hover:text-stone-900">
-                  Try demo
-                </Button>
-              </Link>
               <Link to="/login" data-testid="nav-login">
                 <Button variant="outline" className="rounded-full border-stone-300 hover:bg-stone-100">
                   Sign in
