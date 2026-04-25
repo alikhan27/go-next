@@ -175,8 +175,13 @@ export default function JoinQueue() {
                         data-testid={`join-service-${s.id}`}
                       >
                         <span className="font-medium">{s.name}</span>
-                        <span className={`text-xs ${active ? "text-[#A86246]" : "text-stone-500"}`}>
-                          ~ {s.duration_minutes} min
+                        <span className={`flex items-center gap-3 text-xs ${active ? "text-[#A86246]" : "text-stone-500"}`}>
+                          <span>~ {s.duration_minutes} min</span>
+                          {s.price > 0 && (
+                            <span className={`font-medium ${active ? "text-[#A86246]" : "text-stone-700"}`}>
+                              ₹{Number(s.price).toLocaleString("en-IN")}
+                            </span>
+                          )}
                         </span>
                       </button>
                     );

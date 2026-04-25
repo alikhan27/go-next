@@ -33,10 +33,10 @@ export default function Services() {
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [draft, setDraft] = useState({ name: "", duration_minutes: 30 });
+  const [draft, setDraft] = useState({ name: "", duration_minutes: 30, price: "" });
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [editDraft, setEditDraft] = useState({ name: "", duration_minutes: 30 });
+  const [editDraft, setEditDraft] = useState({ name: "", duration_minutes: 30, price: 0 });
 
   const limits = planLimits(auth?.user);
   const canManage = isPaidPlan(auth?.user);
@@ -74,9 +74,10 @@ export default function Services() {
       await api.post(`/business/${business.id}/services`, {
         name: draft.name.trim(),
         duration_minutes: Number(draft.duration_minutes) || 30,
+        price: Number(draft.price) || 0,
         sort_order: items.length,
       });
-      setDraft({ name: "", duration_minutes: 30 });
+      setDraft({ name: "", duration_minutes: 30, price: "" });
       toast.success("Service added");
       load();
     } catch (err) {
@@ -88,7 +89,7 @@ export default function Services() {
 
   const beginEdit = (s) => {
     setEditingId(s.id);
-    setEditDraft({ name: s.name, duration_minutes: s.duration_minutes });
+    setEditDraft({ name: s.name, duration_minutes: s.duration_minutes, price: s.price ?? 0 });
   };
 
   const saveEdit = async (s) => {
@@ -96,6 +97,7 @@ export default function Services() {
       await api.patch(`/business/${business.id}/services/${s.id}`, {
         name: editDraft.name.trim() || s.name,
         duration_minutes: Number(editDraft.duration_minutes) || s.duration_minutes,
+        price: Number(editDraft.price) || 0,
       });
       setEditingId(null);
       toast.success("Updated");
@@ -172,7 +174,7 @@ export default function Services() {
           <>
             <form
               onSubmit={create}
-              className="mt-8 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6 grid gap-3 sm:grid-cols-[1fr_160px_auto] items-end"
+              className="mt-8 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6 grid gap-3 sm:grid-cols-[1fr_140px_140px_auto] items-end"
               data-testid="services-create-form"
             >
               <div>
@@ -199,6 +201,20 @@ export default function Services() {
                   data-testid="service-duration-input"
                 />
               </div>
+              <div>
+                <Label>Price (₹)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="1"
+                  className="mt-1.5 h-11"
+                  placeholder="0"
+                  value={draft.price}
+                  onChange={(e) => setDraft({ ...draft, price: e.target.value })}
+                  disabled={atLimit}
+                  data-testid="service-price-input"
+                />
+              </div>
               <Button
                 type="submit"
                 disabled={creating || atLimit || !draft.name.trim()}
@@ -208,7 +224,7 @@ export default function Services() {
                 <Plus className="h-4 w-4 mr-1.5" /> {creating ? "Adding…" : "Add service"}
               </Button>
               {atLimit && (
-                <p className="sm:col-span-3 text-xs text-stone-500">
+                <p className="sm:col-span-4 text-xs text-stone-500">
                   You&apos;re at your plan&apos;s service limit ({limits.max_services}). Remove one or upgrade for more.
                 </p>
               )}
@@ -219,16 +235,17 @@ export default function Services() {
                 <TableHeader>
                   <TableRow className="bg-[#F4EFE8]/40">
                     <TableHead className="pl-5">Service</TableHead>
-                    <TableHead className="w-[120px]">Minutes</TableHead>
-                    <TableHead className="w-[110px]">Active</TableHead>
+                    <TableHead className="w-[110px]">Minutes</TableHead>
+                    <TableHead className="w-[120px]">Price</TableHead>
+                    <TableHead className="w-[100px]">Active</TableHead>
                     <TableHead className="w-[180px] pr-5 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow><TableCell colSpan={4} className="text-center text-stone-400 py-8">Loading…</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-center text-stone-400 py-8">Loading…</TableCell></TableRow>
                   ) : items.length === 0 ? (
-                    <TableRow><TableCell colSpan={4} className="text-center text-stone-500 py-10" data-testid="services-empty">
+                    <TableRow><TableCell colSpan={5} className="text-center text-stone-500 py-10" data-testid="services-empty">
                       No services yet. Add your first above so customers know what you offer.
                     </TableCell></TableRow>
                   ) : (
@@ -259,6 +276,21 @@ export default function Services() {
                               />
                             ) : (
                               <span className="text-stone-700">{s.duration_minutes} min</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {isEditing ? (
+                              <Input
+                                type="number" min={0} step="1"
+                                className="h-9 w-24"
+                                value={editDraft.price}
+                                onChange={(e) => setEditDraft({ ...editDraft, price: e.target.value })}
+                                data-testid={`service-edit-price-${s.id}`}
+                              />
+                            ) : (
+                              <span className="text-stone-700">
+                                {s.price > 0 ? `₹${Number(s.price).toLocaleString("en-IN")}` : <span className="text-stone-400">—</span>}
+                              </span>
                             )}
                           </TableCell>
                           <TableCell>

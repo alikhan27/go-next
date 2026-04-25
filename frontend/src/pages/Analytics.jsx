@@ -79,7 +79,12 @@ export default function Analytics() {
   const { auth } = useAuth();
   const businesses = auth?.businesses || [];
   const business = businesses.find((b) => b.id === businessId);
-  const [days, setDays] = useState(14);
+  const planMaxDays = planLimits(auth?.user).analytics_days;
+  const rangeOptions = useMemo(
+    () => [7, 14, 30, 90, 180].filter((d) => d <= planMaxDays),
+    [planMaxDays],
+  );
+  const [days, setDays] = useState(Math.min(14, planMaxDays));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -123,10 +128,11 @@ export default function Analytics() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="7">Last 7 days</SelectItem>
-              <SelectItem value="14">Last 14 days</SelectItem>
-              <SelectItem value="30">Last 30 days</SelectItem>
-              <SelectItem value="90">Last 90 days</SelectItem>
+              {rangeOptions.map((d) => (
+                <SelectItem key={d} value={String(d)} data-testid={`analytics-range-${d}`}>
+                  Last {d} days
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

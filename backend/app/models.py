@@ -83,12 +83,14 @@ class UpdateStatusRequest(BaseModel):
 class CreateServiceRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     duration_minutes: int = Field(ge=1, le=480)
+    price: float = Field(default=0, ge=0, le=1_000_000)
     sort_order: int = Field(default=0, ge=0, le=999)
 
 
 class UpdateServiceRequest(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=80)
     duration_minutes: Optional[int] = Field(default=None, ge=1, le=480)
+    price: Optional[float] = Field(default=None, ge=0, le=1_000_000)
     sort_order: Optional[int] = Field(default=None, ge=0, le=999)
     is_active: Optional[bool] = None
 

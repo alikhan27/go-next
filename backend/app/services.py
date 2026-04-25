@@ -126,6 +126,7 @@ def public_service(s: dict) -> dict:
         "business_id": s["business_id"],
         "name": s.get("name", ""),
         "duration_minutes": int(s.get("duration_minutes", 15)),
+        "price": float(s.get("price", 0) or 0),
         "sort_order": int(s.get("sort_order", 0)),
         "is_active": bool(s.get("is_active", True)),
         "created_at": s.get("created_at"),

@@ -51,6 +51,7 @@ async def create_service(
         "business_id": business_id,
         "name": body.name.strip(),
         "duration_minutes": int(body.duration_minutes),
+        "price": float(body.price or 0),
         "sort_order": int(body.sort_order),
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),

@@ -12,6 +12,7 @@ from ..security import get_current_user
 from ..services import (
     next_token_number,
     owned_business_or_404,
+    plan_limits,
     public_ticket,
     resolve_service_for_ticket,
 )
@@ -171,7 +172,8 @@ async def analytics(
     user: dict = Depends(get_current_user),
 ):
     await owned_business_or_404(user["id"], business_id)
-    days = max(1, min(days, 90))
+    plan_max = plan_limits(user)["analytics_days"]
+    days = max(1, min(days, plan_max))
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
     cursor = db.queue.find(

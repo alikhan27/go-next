@@ -194,7 +194,7 @@ export default function Landing() {
                   "Up to 50 tokens per day",
                   "Live queue board & customer QR",
                   "Live customer ticket tracking",
-                  "14-day analytics",
+                  "7-day analytics",
                 ].map((f) => (
                   <li key={f} className="flex items-start gap-2">
                     <CheckCircle2 className="h-4 w-4 text-[#7D9276] flex-none mt-0.5" />

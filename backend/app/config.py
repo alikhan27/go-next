@@ -24,7 +24,7 @@ PLAN_LIMITS = {
         "max_outlets": 1,
         "max_stations": 3,
         "max_tokens_per_day": 50,
-        "analytics_days": 14,
+        "analytics_days": 7,
         "can_manage_services": False,
         "max_services": 0,
         "features": [
@@ -32,7 +32,7 @@ PLAN_LIMITS = {
             "Up to 50 tokens / day",
             "Live queue board & customer QR",
             "Live ticket tracking",
-            "14-day analytics",
+            "7-day analytics",
         ],
     },
     "premium": {
