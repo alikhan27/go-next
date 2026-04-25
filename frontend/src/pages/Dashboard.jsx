@@ -15,7 +15,7 @@ import { Badge } from "../components/ui/badge";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import {
-  Plus, UserPlus, Check, X, ChevronRight, Download, Copy, Tv, UserX,
+  Plus, UserPlus, Check, X, ChevronRight, Download, Copy, Tv, UserX, Printer, BadgeCheck,
 } from "lucide-react";
 
 function StatCard({ label, value, accent, testid }) {
@@ -40,7 +40,8 @@ export default function Dashboard() {
   const businesses = auth?.businesses || [];
   const business = businesses.find((b) => b.id === businessId);
   const [tickets, setTickets] = useState([]);
-  const [stats, setStats] = useState({ waiting: 0, serving: 0, completed_today: 0, no_show_today: 0 });
+  const [recent, setRecent] = useState([]);
+  const [stats, setStats] = useState({ waiting: 0, serving: 0, completed_today: 0, no_show_today: 0, revenue_today: 0 });
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [walkIn, setWalkIn] = useState({ customer_name: "", customer_phone: "" });
   const [isOnline, setIsOnline] = useState(business?.is_online ?? true);
@@ -52,12 +53,14 @@ export default function Dashboard() {
   const load = useCallback(async () => {
     if (!business) return;
     try {
-      const [q, s] = await Promise.all([
+      const [q, s, r] = await Promise.all([
         api.get(`/business/${business.id}/queue`),
         api.get(`/business/${business.id}/stats`),
+        api.get(`/business/${business.id}/recent-completed`),
       ]);
       setTickets(q.data);
       setStats(s.data);
+      setRecent(r.data);
     } catch {
       /* ignore */
     }
@@ -94,6 +97,16 @@ export default function Dashboard() {
   const updateStatus = async (id, status) => {
     try {
       await api.patch(`/business/${business.id}/queue/${id}/status`, { status });
+      load();
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    }
+  };
+
+  const togglePaid = async (id, paid) => {
+    try {
+      await api.patch(`/business/${business.id}/queue/${id}/paid`, { paid });
+      toast.success(paid ? "Marked paid" : "Marked unpaid");
       load();
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
@@ -165,11 +178,12 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <StatCard label="Waiting" value={stats.waiting} accent="text-[#A86246]" testid="stat-waiting" />
           <StatCard label="Serving" value={stats.serving} accent="text-[#4c6547]" testid="stat-serving" />
           <StatCard label="Done today" value={stats.completed_today} testid="stat-done" />
           <StatCard label="No-shows today" value={stats.no_show_today} testid="stat-noshow" />
+          <StatCard label="Revenue today" value={`₹${Number(stats.revenue_today || 0).toLocaleString("en-IN")}`} accent="text-[#A86246]" testid="stat-revenue" />
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -278,12 +292,32 @@ export default function Dashboard() {
                           </>
                         )}
                         {t.status === "serving" && (
-                          <Button size="sm"
-                            className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white"
-                            onClick={() => updateStatus(t.id, "completed")}
-                            data-testid={`complete-${t.token_number}`}>
-                            <Check className="h-3.5 w-3.5 mr-1" /> Done
-                          </Button>
+                          <>
+                            {t.service_price > 0 && (
+                              <Button
+                                size="sm"
+                                variant={t.paid ? "default" : "outline"}
+                                className={`rounded-full ${
+                                  t.paid
+                                    ? "bg-[#7D9276] hover:bg-[#6a8064] text-white"
+                                    : "border-[#C47C5C]/40 text-[#A86246] hover:bg-[#F4EFE8]"
+                                }`}
+                                onClick={() => togglePaid(t.id, !t.paid)}
+                                title={t.paid ? "Tap to mark unpaid" : "Tap to mark paid"}
+                                data-testid={`paid-toggle-${t.token_number}`}
+                              >
+                                {t.paid
+                                  ? <><BadgeCheck className="h-3.5 w-3.5 mr-1" /> Paid · ₹{Number(t.service_price).toLocaleString("en-IN")}</>
+                                  : <>Mark paid · ₹{Number(t.service_price).toLocaleString("en-IN")}</>}
+                              </Button>
+                            )}
+                            <Button size="sm"
+                              className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white"
+                              onClick={() => updateStatus(t.id, "completed")}
+                              data-testid={`complete-${t.token_number}`}>
+                              <Check className="h-3.5 w-3.5 mr-1" /> Done
+                            </Button>
+                          </>
                         )}
                         {t.status !== "completed" && t.status !== "cancelled" && t.status !== "no_show" && (
                           <Button size="sm" variant="ghost" className="rounded-full text-stone-500"
@@ -298,6 +332,54 @@ export default function Dashboard() {
                 ))}
               </TableBody>
             </Table>
+
+            {recent.length > 0 && (
+              <div className="mt-8 border-t border-stone-200 pt-6" data-testid="recent-completed">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-serif-display text-lg">Today&apos;s completions</h3>
+                  <p className="text-[10px] uppercase tracking-[0.22em] text-stone-500">{recent.length} of last 10</p>
+                </div>
+                <div className="space-y-2">
+                  {recent.map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center justify-between rounded-xl border border-stone-200 px-4 py-3 hover:bg-stone-50/60"
+                      data-testid={`recent-row-${t.token_number}`}
+                    >
+                      <div className="min-w-0 flex items-center gap-3">
+                        <span className="font-serif-display text-2xl text-stone-400 tabular-nums">
+                          #{String(t.token_number).padStart(3, "0")}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="font-medium text-stone-800 truncate">{t.customer_name}</p>
+                          <p className="text-xs text-stone-500 truncate">
+                            {t.service_name || "—"}
+                            {t.service_price > 0 && ` · ₹${Number(t.service_price).toLocaleString("en-IN")}`}
+                          </p>
+                        </div>
+                      </div>
+                      {t.service_price > 0 ? (
+                        <Button
+                          size="sm"
+                          variant={t.paid ? "default" : "outline"}
+                          className={`rounded-full ${
+                            t.paid
+                              ? "bg-[#7D9276] hover:bg-[#6a8064] text-white"
+                              : "border-[#C47C5C]/40 text-[#A86246] hover:bg-[#F4EFE8]"
+                          }`}
+                          onClick={() => togglePaid(t.id, !t.paid)}
+                          data-testid={`recent-paid-toggle-${t.token_number}`}
+                        >
+                          {t.paid ? <><BadgeCheck className="h-3.5 w-3.5 mr-1" /> Paid</> : "Mark paid"}
+                        </Button>
+                      ) : (
+                        <span className="text-[10px] uppercase tracking-[0.18em] text-stone-400">No price</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <aside className="space-y-4">
@@ -315,6 +397,16 @@ export default function Dashboard() {
                   <Download className="h-4 w-4 mr-1.5" /> SVG
                 </Button>
               </div>
+              <Link
+                to={`/dashboard/${business.id}/qr-poster`}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="open-qr-poster"
+              >
+                <Button variant="ghost" className="mt-2 w-full rounded-full text-[#A86246] hover:bg-[#F4EFE8]">
+                  <Printer className="h-4 w-4 mr-1.5" /> Print poster for reception
+                </Button>
+              </Link>
               <p className="mt-3 text-[11px] break-all text-stone-500">{joinUrl}</p>
             </div>
 

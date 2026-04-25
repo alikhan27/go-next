@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 5 — Plan tiers (free/premium/premium_plus) + outlet services CRUD + service-aware ETA + frontend services page. Updated /app/backend/tests/backend_test.py: fixed 2 outdated assertions (TestPlans expected old premium=10 outlets/100 stations/1000 tokens — now premium=3/10/200 + premium_plus=25/10/500; TestFreePlanLimits free max_stations 2 → 3) and added 13 new tests across 6 new classes (TestServicesCRUD, TestJoinWithService, TestETACalculation, TestWalkInWithService, TestAdminPlanUpdate, TestPremiumLimits). Added session-fixture cleanup that purges leftover TEST_* outlets so the now-stricter 3-outlet premium cap doesn't starve later tests. Total 55/55 pytest pass in 58s. Frontend Playwright (desktop) verified: pricing-free / pricing-premium / pricing-premium-plus all rendered on Landing#pricing; super@go-next.in line removed from /login while admin@go-next.in line still shown; admin login → DashboardHeader has tab-services + PREMIUM badge; Services page (Premium owner) at /dashboard/demo-salon/services renders services-page + service-name-input + service-duration-input + service-add-btn — adding 'TEST_UI_Svc 20min' shows it in the table with edit/delete (toggle + trash icons). Mobile (390×844) JoinQueue at /join/demo-salon renders join-services section with 2 service buttons (data-testid=join-service-{id}); 'Get my token' button is disabled before a service is picked. Fresh free-plan owner navigating to their /dashboard/{id}/services correctly sees services-upgrade-card with 'See plans' CTA.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Landing #pricing", "issues": ["The 'Most popular' badge string was not found inside pricing-premium card text (text length ~271 chars, only contains plan title/features). Likely styled as an icon/visual ribbon rather than a literal 'Most popular' label — review whether the spec wording should be visible as text for accessibility."]},
+      {"screen": "JoinQueue (mobile)", "issues": ["The customer 'name' input does not expose a placeholder/name attribute that contains 'name' — Playwright fill failed on input[placeholder*='name' i]. Consider adding data-testid='join-name' / 'join-phone' for testability and screen-reader friendliness."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Nice-to-have) Add data-testid='join-name' and 'join-phone' on the JoinQueue customer fields — currently only the service buttons + the submit button are testid-tagged.",
+    "(Nice-to-have) Consider rendering the 'Most popular' badge as visible text (or aria-label) on pricing-premium so it's easier to verify in tests / for AT users.",
+    "(Nice-to-have) The session-fixture cleanup we added auto-deletes TEST_* outlets at start AND end. Long-term, prefer a per-test outlet-context-manager rather than relying on the session purge.",
+    "(Nice-to-have) /api/admin/users PATCH currently allows only free|premium|premium_plus — confirmed via the new test_invalid_plan_rejected. No action needed."
+  ],
+  "critical_code_review_comments": [
+    "PLAN_LIMITS in backend/app/config.py is the single source of truth (max_outlets, max_stations, max_tokens_per_day, max_services, can_manage_services). Routers reference it via services.plan_limits(user) — clean.",
+    "services.require_paid_plan correctly raises 403 with 'Custom services require Premium' for the free plan; verified by TestServicesCRUD.test_free_owner_cannot_manage_services on POST/PATCH/DELETE.",
+    "Services router excludes mongo _id via projection ({_id:0}) and shapes output through public_service() — no ObjectID leak.",
+    "Public list (/api/public/business/{id}/services) filters is_active=True at the DB layer and sorts by sort_order asc, created_at asc — verified.",
+    "Join-with-service: join validates the service_id belongs to the outlet AND is_active; cross-outlet or inactive id returns 400 'Selected service is unavailable'. When outlet has any active service AND service_id is missing, returns 400 'Please choose a service to continue'. Backward-compat: outlet with no services accepts join without service_id.",
+    "ETA math: queue-summary sums service_duration_minutes of all waiting tickets / total_chairs (15-min fallback per ticket without service). New joiner with chairs free → 0. Per-ticket /api/public/ticket/{id} sums ONLY tickets ahead (lower token_number). Verified end-to-end with chairs=1 + 40-min service: 1st joiner ETA=0, 2nd joiner position=2 ETA=40, summary ETA=80.",
+    "Walk-in with service_id denormalises service_name + service_duration_minutes onto the ticket — same pattern as public join, verified.",
+    "AdminUserUpdate validates plan against {free, premium, premium_plus} — 'platinum' rejected (422).",
+    "Frontend: planLimits helper in /app/frontend/src/lib/plans.js is now used by Outlets.jsx, Settings.jsx, Onboarding.jsx for chair/token clamping — DRY, good.",
+    "Frontend: Services.jsx is feature-flagged by isPaidPlan(plan) — free owners see the upgrade card variant with data-testid='services-upgrade-card'. Verified live.",
+    "Frontend: Login page no longer advertises super@go-next.in; the seeded super-admin account still exists for backend/admin testing only — matches the user's 'demo only for Go-Next' intent."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (55/55)", "frontend": "100% on the targeted flows (pricing, login demo line, services management add, free upgrade card, customer service picker disabled-state)"},
+  "test_credentials": "admin@go-next.in / admin123 (premium owner with demo-salon + demo-salon-andheri); super@go-next.in / admin123 (super admin). Free-plan tests register transient ui_free_*/test_free_* accounts and clean up via TEST_ prefix on outlets.",
+  "seed_data_creation": "Tests create TEST_*-prefixed outlets/services/walk-ins and ui_free_*, test_free_*, test_brute_*, test_reset_*, test_lockadmin_*, test_p3_*, test_other_* users. Owner_session fixture auto-purges TEST_* outlets at start and end of session for the seeded admin to keep the 3-outlet premium cap from blocking re-runs.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "backend_test.py now has 55 tests across 16 classes. New since iter 4: TestServicesCRUD (4 tests), TestJoinWithService (2), TestETACalculation (2), TestWalkInWithService (1), TestAdminPlanUpdate (2), TestPremiumLimits (2). Updated assertions: TestPlans validates 3 plans incl. premium_plus (max_outlets 25, max_stations 10, max_tokens 500, max_services 30) and updated premium caps (3/10/200/12). TestFreePlanLimits.test_free_cannot_patch_chairs_above_limit now uses 4 (>limit) and 3 (=limit). owner_session fixture is module-session and yields, so it has a pre/post cleanup. Frontend data-testids confirmed live: pricing-free/-premium/-premium-plus, tab-services, services-page, service-name-input, service-duration-input, service-add-btn, services-upgrade-card, join-services, join-service-{id}. Demo seed: demo-salon (Bandra, 4 chairs, 2 services) and demo-salon-andheri (3 chairs, no services) — useful to test backward-compat join flow. Customer name/phone fields on /join/{id} have no data-testid yet; selectors must use placeholder/text role.",
+  "rca of the issue": "N/A — no regressions detected. The 11 transient pytest failures during the first run were all caused by (a) the seeded admin's outlet count exceeding the new premium cap of 3 due to leftover TEST_* outlets from prior iterations; (b) my new tests using customer_phone='1' which now violates the min-length-6 Pydantic validator on JoinQueueRequest; and (c) the existing TestPublicQueueAndJoin.test_join_creates_ticket targeting demo-salon (which is now seeded with services and therefore requires service_id). Mitigation: added pre/post cleanup in owner_session fixture, normalised test phone numbers to 10-digit values, and switched the backward-compat join test to demo-salon-andheri (no services). All 55 tests now pass."
+}

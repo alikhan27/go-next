@@ -79,6 +79,29 @@ export default function Display() {
           </div>
         </header>
 
+        {!business.is_online && (
+          <div
+            className="mt-8 rounded-3xl border border-[#C47C5C]/40 bg-[#2a2221]/70 px-8 py-6 flex flex-wrap items-center justify-between gap-4"
+            data-testid="display-paused-banner"
+          >
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.32em] text-[#E3A587]">Queue paused</p>
+              {business.offline_message ? (
+                <p className="mt-2 font-serif-display text-3xl sm:text-4xl leading-snug text-stone-100 whitespace-pre-line" data-testid="display-offline-message">
+                  {business.offline_message}
+                </p>
+              ) : (
+                <p className="mt-2 font-serif-display text-3xl text-stone-300">
+                  Not accepting new guests right now.
+                </p>
+              )}
+            </div>
+            <span className="rounded-full bg-[#C47C5C]/15 text-[#E3A587] border border-[#C47C5C]/40 px-4 py-1.5 text-xs uppercase tracking-[0.28em]">
+              Closed
+            </span>
+          </div>
+        )}
+
         <section className="mt-10 grid gap-5" style={{ gridTemplateColumns: `repeat(${Math.min(stations.length, 4)}, minmax(0,1fr))` }}>
           {stations.map((chair) => {
             const t = byChair[chair];

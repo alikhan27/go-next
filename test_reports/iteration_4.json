@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 4 — full regression after backend refactor + onboarding wizard + QR poster. Extended /app/backend/tests/backend_test.py with 9 new tests covering brute-force lockout (5 fails/15-min), forgot/reset/lock-account preview flow, admin /api/admin/security/lockouts GET + DELETE, and public queue-summary/join/ticket shape. Total 42/42 pytest pass. Playwright verified (a) signup redirects to /dashboard/{id}/onboarding, (b) 4-step wizard (welcome → stations PATCH → QR → display), (c) stations input clamps to plan limit (free=2, premium=100), (d) localStorage gonext:onboarded:{userId}='1' set on finish, (e) QR poster page renders with outlet name + 'Scan to join the queue' tagline + SVG QR + print/download/back controls, (f) Dashboard shows 'Print poster for reception' button with data-testid=open-qr-poster that links to /qr-poster route.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Nice-to-have) Cache-Control on /api/plans (still open from iter 3).",
+    "(Nice-to-have) Admin lockouts endpoint currently groups by full identifier ('email:foo@x.io'); email split is done on the server but consider also exposing the raw identifier for audit.",
+    "(Nice-to-have) Onboarding 'Skip for now' on Step 1 currently routes via finish() which also marks onboarding done — cosmetic only, but a literal skip (no flag write) may be more honest semantically.",
+    "(Nice-to-have) QR poster page does not surface any loading/error skeleton if auth is still resolving; the double guard on auth===null returning null is fine but could be a tiny spinner."
+  ],
+  "critical_code_review_comments": [
+    "Refactor is clean: server.py is a thin 60-line entrypoint; every endpoint moved to app/routers/* with require_super_admin centralised in security.py — no behavioural drift detected by regression suite.",
+    "services.enforce_lockout raises 429 with a minutes-remaining message; in login() this runs BEFORE user lookup, so enumeration is impossible on a locked email. Good.",
+    "forgot-password always returns ok=True and only adds preview_reset_link when user exists — avoids user-enumeration. Good.",
+    "reset-password clears login-attempts for that email (services.clear_attempts). Nice touch — a recovered user isn't stuck behind a lockout.",
+    "lock-account invalidates all outstanding reset tokens (delete_many) and outstanding lock tokens (update_many) — clean kill-switch semantics.",
+    "admin/security/lockouts DELETE returns cleared=N; UI can surface how many attempt rows were wiped.",
+    "Onboarding.jsx uses localStorage under gonext:onboarded:{userId} — fine for first-run UX, but if the user clears storage they'll re-onboard. That's by design given Register redirect only happens once.",
+    "QrPoster.jsx uses window.print() + @page rule for A4 — good, but the 'Download SVG' button serializes the QR only (not the surrounding poster); label says 'SVG' (short), matches expectations.",
+    "Register.jsx passes firstBusiness.id from POST /auth/register response — if backend ever returns an empty businesses[] this would crash; defensive ?.id with fallback to /dashboard would be safer."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (42/42)", "frontend": "100% core flows"},
+  "test_credentials": "admin@go-next.in / admin123 (premium owner, 2 outlets), super@go-next.in / admin123 (super admin). Fresh brute-force/reset/lockout tests register unique test_* emails.",
+  "seed_data_creation": "Tests create TEST_*-prefixed outlets/walk-ins and test_brute_*, test_reset_*, test_lockadmin_*, ui_onb_* users. Harmless — all prefixed for easy purge.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "backend_test.py now has 42 tests across 10 classes. New classes since iter 3: TestBruteForceLockout (1 test — locks fresh user after 5 fails and clears via super admin), TestPasswordResetFlow (3 tests — forgot/reset/lock happy path, unknown-email silent-success, invalid token 400), TestAdminLockouts (3 tests — super admin list/clear, owner 403, unauth 401), TestPublicQueueAndJoin (2 tests — queue-summary shape with waiting_count/serving_count keys and public ticket wrapper shape {ticket,position,business,estimated_wait_minutes}). Frontend data-testids verified: register-email/password/owner-name/business-name/state/pincode/submit, onboarding-welcome/-next/-skip, onboarding-stations/-input/-next, onboarding-qr/-copy-link/-open-poster/-next, onboarding-display/-finish, open-qr-poster (Dashboard), qr-poster-page/-sheet/-print/-download/-back.",
+  "rca of the issue": "N/A — no regressions from the refactor. All 28 endpoints in the original spec + 2 admin lockout endpoints + 3 auth preview endpoints behave as documented. Onboarding + QR poster routes are fully wired and protected by the auth gate."
+}

@@ -16,6 +16,7 @@ import {
 } from "../components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Plus, MapPin, Building2, ArrowRight, Trash2 } from "lucide-react";
+import { isPaidPlan, planLimits, planLabel } from "../lib/plans";
 
 export default function Outlets() {
   const { auth, addBusiness, removeBusiness } = useAuth();
@@ -31,9 +32,10 @@ export default function Outlets() {
     pincode: "",
   });
 
-  const isPremium = auth?.user?.plan === "premium";
+  const isPremium = isPaidPlan(auth?.user);
   const businesses = auth?.businesses || [];
-  const maxOutlets = isPremium ? 10 : 1;
+  const limits = planLimits(auth?.user);
+  const maxOutlets = limits.max_outlets;
   const atLimit = businesses.length >= maxOutlets;
 
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
@@ -75,7 +77,7 @@ export default function Outlets() {
             <h1 className="font-serif-display text-4xl sm:text-5xl mt-2 leading-none">Your locations</h1>
             <p className="mt-2 text-stone-600 text-sm">
               {isPremium
-                ? `Premium plan · up to ${maxOutlets} outlets.`
+                ? `${planLabel(auth?.user)} plan · up to ${maxOutlets} outlet${maxOutlets === 1 ? "" : "s"}.`
                 : `Free plan · ${businesses.length} / ${maxOutlets} outlet used.`}
             </p>
           </div>
@@ -155,7 +157,7 @@ export default function Outlets() {
           <div className="mt-8 rounded-2xl border border-[#C47C5C]/40 bg-[#F4EFE8]/60 p-5 flex flex-wrap items-center justify-between gap-3" data-testid="upgrade-banner">
             <div>
               <p className="font-serif-display text-xl leading-tight">You&apos;re at your Free plan limit.</p>
-              <p className="mt-1 text-sm text-stone-600">Upgrade to Premium to add up to 10 outlets, 100 stations, and full analytics.</p>
+              <p className="mt-1 text-sm text-stone-600">Upgrade to Premium for 3 outlets, custom services with accurate ETAs, and a 90-day analytics history.</p>
             </div>
             <Link to="/#pricing" data-testid="upgrade-banner-cta">
               <Button className="rounded-full bg-[#C47C5C] hover:bg-[#A86246] text-white h-10 px-5 press">

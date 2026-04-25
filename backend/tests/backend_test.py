@@ -34,7 +34,28 @@ def owner_session():
     data = r.json()
     assert data.get("access_token")
     assert "access_token" in s.cookies
-    return s, data
+    # Premium plan now caps at 3 outlets; admin is seeded with 2 demo-* outlets.
+    # Purge any leftover TEST_* outlets from prior runs so create-outlet tests have headroom.
+    try:
+        outlets = s.get(f"{API}/business").json()
+        for o in outlets:
+            if o.get("business_name", "").startswith("TEST_") or o.get("id", "").startswith("test_"):
+                s.delete(f"{API}/business/{o['id']}")
+    except Exception:
+        pass
+    yield s, data
+    # Teardown: remove any TEST_* outlets we created during the session
+    try:
+        outlets = s.get(f"{API}/business").json()
+        for o in outlets:
+            if o.get("business_name", "").startswith("TEST_"):
+                s.delete(f"{API}/business/{o['id']}")
+    except Exception:
+        pass
+
+
+def _owner_session_unused():
+    return None
 
 
 @pytest.fixture(scope="session")
@@ -129,6 +150,8 @@ class TestBusinessCRUD:
         # Appears in GET list
         listed = s.get(f"{API}/business").json()
         assert any(o["id"] == created["id"] for o in listed)
+        # cleanup so we don't deplete the 3-outlet premium quota for subsequent tests
+        s.delete(f"{API}/business/{created['id']}")
 
     def test_create_outlet_missing_state_fails(self, owner_session):
         s, _ = owner_session
@@ -281,12 +304,12 @@ class TestAnalytics:
         # Seed: 2 completed + 1 no_show
         for i in range(2):
             w = s.post(f"{API}/business/{bid}/queue/walk-in",
-                       json={"customer_name": f"TEST_A_{i}_{uuid.uuid4().hex[:4]}", "customer_phone": ""}).json()
+                       json={"customer_name": f"TEST_A_{i}_{uuid.uuid4().hex[:4]}", "customer_phone": "9990005678"}).json()
             srv = s.post(f"{API}/business/{bid}/queue/call-next").json()
             s.patch(f"{API}/business/{bid}/queue/{srv['id']}/status", json={"status": "completed"})
 
         ns = s.post(f"{API}/business/{bid}/queue/walk-in",
-                    json={"customer_name": f"TEST_NS_{uuid.uuid4().hex[:4]}", "customer_phone": ""}).json()
+                    json={"customer_name": f"TEST_NS_{uuid.uuid4().hex[:4]}", "customer_phone": "9990005678"}).json()
         s.patch(f"{API}/business/{bid}/queue/{ns['id']}/status", json={"status": "no_show"})
 
         # Fetch analytics
@@ -327,17 +350,27 @@ class TestPlans:
         data = r.json()
         assert "plans" in data
         ids = {p["id"]: p for p in data["plans"]}
-        assert "free" in ids and "premium" in ids
+        assert "free" in ids and "premium" in ids and "premium_plus" in ids
         free = ids["free"]
         assert free["max_outlets"] == 1
-        assert free["max_stations"] == 2
+        assert free["max_stations"] == 3
         assert free["max_tokens_per_day"] == 50
         assert free["analytics_days"] == 14
+        assert free.get("can_manage_services") is False
+        assert free.get("max_services") == 0
         prem = ids["premium"]
-        assert prem["max_outlets"] == 10
-        assert prem["max_stations"] == 100
-        assert prem["max_tokens_per_day"] == 1000
+        assert prem["max_outlets"] == 3
+        assert prem["max_stations"] == 10
+        assert prem["max_tokens_per_day"] == 200
         assert prem["analytics_days"] == 90
+        assert prem.get("can_manage_services") is True
+        assert prem.get("max_services") == 12
+        plus = ids["premium_plus"]
+        assert plus["max_outlets"] == 25
+        assert plus["max_stations"] == 10
+        assert plus["max_tokens_per_day"] == 500
+        assert plus.get("can_manage_services") is True
+        assert plus.get("max_services") == 30
 
 
 # ------------- Free-plan enforcement -------------
@@ -394,10 +427,11 @@ class TestFreePlanLimits:
     def test_free_cannot_patch_chairs_above_limit(self, fresh_free_owner):
         s, data, _ = fresh_free_owner
         bid = data["businesses"][0]["id"]
-        r = s.patch(f"{API}/business/{bid}", json={"total_chairs": 3})
+        # Free plan max_stations is now 3
+        r = s.patch(f"{API}/business/{bid}", json={"total_chairs": 4})
         assert r.status_code == 403
         # Equal-to-limit should pass
-        r = s.patch(f"{API}/business/{bid}", json={"total_chairs": 2})
+        r = s.patch(f"{API}/business/{bid}", json={"total_chairs": 3})
         assert r.status_code == 200
 
     def test_free_cannot_patch_token_limit_above_50(self, fresh_free_owner):
@@ -511,7 +545,7 @@ class TestSuperAdminFlows:
         oid = created["id"]
         # Add a walk-in ticket so we can verify cascade delete
         own_s.post(f"{API}/business/{oid}/queue/walk-in",
-                   json={"customer_name": "TEST_CascadeDel", "customer_phone": ""})
+                   json={"customer_name": "TEST_CascadeDel", "customer_phone": "9990005678"})
 
         # super admin deletes
         r = sup_s.delete(f"{API}/admin/businesses/{oid}")
@@ -524,3 +558,523 @@ class TestSuperAdminFlows:
         # Delete again -> 404
         r = sup_s.delete(f"{API}/admin/businesses/{oid}")
         assert r.status_code == 404
+
+
+# ------------- Brute-force lockout (5 failures / 15-min) -------------
+class TestBruteForceLockout:
+    def test_lockout_after_5_failed_attempts(self):
+        """After 5 failed attempts, the 6th (even with correct pwd) returns 429."""
+        # Create fresh user so we don't lock out the session admin
+        s = requests.Session()
+        email = f"test_brute_{uuid.uuid4().hex[:8]}@example.com"
+        reg = s.post(f"{API}/auth/register", json={
+            "email": email, "password": "password123",
+            "owner_name": "Brute Owner", "business_name": "TEST_BruteOutlet",
+            "business_type": "salon", "state": "Maharashtra", "pincode": "400001",
+        })
+        assert reg.status_code == 200, reg.text
+
+        # 5 wrong attempts → all 401
+        for i in range(5):
+            r = requests.post(f"{API}/auth/login",
+                              json={"email": email, "password": "wrongpw"})
+            assert r.status_code == 401, f"attempt {i+1}: {r.status_code} {r.text}"
+
+        # 6th — even the CORRECT password should be blocked
+        r = requests.post(f"{API}/auth/login",
+                          json={"email": email, "password": "password123"})
+        assert r.status_code == 429, f"expected 429 got {r.status_code}: {r.text}"
+        assert "Too many failed attempts" in r.json().get("detail", "")
+
+        # Super admin clears the lockout
+        sup = requests.Session()
+        sup.post(f"{API}/auth/login",
+                 json={"email": SUPER_EMAIL, "password": SUPER_PASSWORD})
+        clr = sup.delete(f"{API}/admin/security/lockouts/{email}")
+        assert clr.status_code == 200
+        assert clr.json()["ok"] is True
+
+        # Correct login now succeeds
+        r = requests.post(f"{API}/auth/login",
+                          json={"email": email, "password": "password123"})
+        assert r.status_code == 200, r.text
+
+
+# ------------- Forgot/Reset/Lock password flow (preview mode) -------------
+class TestPasswordResetFlow:
+    def test_forgot_returns_preview_link_and_reset_succeeds(self):
+        # Fresh user so we can freely reset
+        s = requests.Session()
+        email = f"test_reset_{uuid.uuid4().hex[:8]}@example.com"
+        original_pw = "password123"
+        new_pw = "newpassword456"
+        reg = s.post(f"{API}/auth/register", json={
+            "email": email, "password": original_pw,
+            "owner_name": "Reset Owner", "business_name": "TEST_ResetOutlet",
+            "business_type": "salon", "state": "Maharashtra", "pincode": "400001",
+        })
+        assert reg.status_code == 200
+
+        # forgot-password
+        fp = requests.post(f"{API}/auth/forgot-password", json={"email": email})
+        assert fp.status_code == 200, fp.text
+        fp_data = fp.json()
+        assert fp_data["ok"] is True
+        assert "preview_reset_link" in fp_data, f"missing preview_reset_link: {fp_data}"
+        link = fp_data["preview_reset_link"]
+        token = link.split("token=")[-1]
+        assert token
+
+        # reset-password
+        rp = requests.post(f"{API}/auth/reset-password",
+                           json={"token": token, "new_password": new_pw})
+        assert rp.status_code == 200, rp.text
+        rp_data = rp.json()
+        assert rp_data["ok"] is True
+        assert "preview_lock_link" in rp_data, f"missing preview_lock_link: {rp_data}"
+        lock_token = rp_data["preview_lock_link"].split("token=")[-1]
+
+        # Reusing the same reset token -> 400
+        reused = requests.post(f"{API}/auth/reset-password",
+                               json={"token": token, "new_password": "another"})
+        assert reused.status_code == 400
+
+        # Old password no longer works; new one works
+        bad = requests.post(f"{API}/auth/login",
+                            json={"email": email, "password": original_pw})
+        assert bad.status_code == 401
+        good = requests.post(f"{API}/auth/login",
+                             json={"email": email, "password": new_pw})
+        assert good.status_code == 200
+
+        # lock-account freezes the account
+        la = requests.post(f"{API}/auth/lock-account", json={"token": lock_token})
+        assert la.status_code == 200, la.text
+        assert la.json()["ok"] is True
+
+        # Now login with correct password returns 403 (frozen)
+        r = requests.post(f"{API}/auth/login",
+                          json={"email": email, "password": new_pw})
+        assert r.status_code == 403
+        assert "frozen" in r.json().get("detail", "").lower()
+
+        # Reusing the lock token -> 400
+        r2 = requests.post(f"{API}/auth/lock-account", json={"token": lock_token})
+        assert r2.status_code == 400
+
+    def test_forgot_unknown_email_still_ok(self):
+        # Must not leak existence
+        r = requests.post(f"{API}/auth/forgot-password",
+                          json={"email": f"ghost_{uuid.uuid4().hex[:6]}@nowhere.io"})
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+        assert "preview_reset_link" not in r.json()
+
+    def test_reset_with_invalid_token(self):
+        r = requests.post(f"{API}/auth/reset-password",
+                          json={"token": "not-a-real-token", "new_password": "whatever123"})
+        assert r.status_code == 400
+
+
+# ------------- Admin security / lockouts -------------
+class TestAdminLockouts:
+    def test_lockouts_endpoint_lists_trapped_email(self, super_session):
+        sup_s, _ = super_session
+        # Seed a fresh locked email
+        email = f"test_lockadmin_{uuid.uuid4().hex[:8]}@example.com"
+        s = requests.Session()
+        s.post(f"{API}/auth/register", json={
+            "email": email, "password": "password123",
+            "owner_name": "Lock Admin", "business_name": "TEST_LockAdminOutlet",
+            "business_type": "salon", "state": "Maharashtra", "pincode": "400001",
+        })
+        for _ in range(5):
+            requests.post(f"{API}/auth/login",
+                          json={"email": email, "password": "wrong"})
+
+        r = sup_s.get(f"{API}/admin/security/lockouts")
+        assert r.status_code == 200
+        rows = r.json()
+        assert isinstance(rows, list)
+        match = [row for row in rows if row["email"] == email]
+        assert len(match) == 1, f"expected lockout row for {email}: {rows}"
+        row = match[0]
+        assert row["failed_attempts"] >= 5
+        assert row["is_locked"] is True
+        assert row["unlock_at"]
+
+        # clear
+        clr = sup_s.delete(f"{API}/admin/security/lockouts/{email}")
+        assert clr.status_code == 200
+        assert clr.json()["cleared"] >= 5
+
+        # cleared from list
+        r2 = sup_s.get(f"{API}/admin/security/lockouts")
+        assert not any(row["email"] == email for row in r2.json())
+
+    def test_lockouts_endpoints_forbidden_for_owner(self, owner_session):
+        s, _ = owner_session
+        r = s.get(f"{API}/admin/security/lockouts")
+        assert r.status_code == 403
+        r = s.delete(f"{API}/admin/security/lockouts/any@x.io")
+        assert r.status_code == 403
+
+    def test_lockouts_endpoints_unauth(self):
+        assert requests.get(f"{API}/admin/security/lockouts").status_code == 401
+        assert requests.delete(f"{API}/admin/security/lockouts/x@y.io").status_code == 401
+
+
+# ------------- Public queue endpoints (added in refactor) -------------
+class TestPublicQueueAndJoin:
+    def test_queue_summary_shape(self):
+        r = requests.get(f"{API}/public/business/{DEMO_ID_1}/queue-summary")
+        assert r.status_code == 200
+        data = r.json()
+        for k in ("waiting_count", "serving_count", "total_chairs", "business"):
+            assert k in data, f"missing key '{k}' in {data}"
+        assert isinstance(data["waiting_count"], int)
+        assert data["business"]["id"] == DEMO_ID_1
+
+    def test_join_creates_ticket_and_public_ticket_lookup(self):
+        # Use DEMO_ID_2 (Andheri) which is seeded without services so join works
+        # without service_id (backward-compat path).
+        body = {"customer_name": f"TEST_PubJoin_{uuid.uuid4().hex[:4]}",
+                "customer_phone": "9990001111", "party_size": 1}
+        r = requests.post(f"{API}/public/business/{DEMO_ID_2}/join", json=body)
+        assert r.status_code == 200, r.text
+        t = r.json()
+        assert t["business_id"] == DEMO_ID_2
+        assert t["status"] == "waiting"
+        tid = t["id"]
+        # public ticket lookup — wrapped in {ticket, position, estimated_wait_minutes, business}
+        r2 = requests.get(f"{API}/public/ticket/{tid}")
+        assert r2.status_code == 200, r2.text
+        data = r2.json()
+        assert "ticket" in data and "position" in data and "business" in data
+        assert data["ticket"]["id"] == tid
+        assert data["business"]["id"] == DEMO_ID_2
+        assert isinstance(data["position"], int)
+
+
+
+
+# ------------- Services CRUD (premium+) and public services -------------
+class TestServicesCRUD:
+    def _make_temp_outlet(self, s):
+        created = s.post(f"{API}/business", json={
+            "business_name": f"TEST_Svc_{uuid.uuid4().hex[:6]}",
+            "business_type": "salon",
+            "state": "Maharashtra", "pincode": "400001",
+        }).json()
+        return created["id"]
+
+    def test_premium_owner_full_crud(self, owner_session):
+        s, _ = owner_session
+        bid = self._make_temp_outlet(s)
+        # initially empty
+        r = s.get(f"{API}/business/{bid}/services")
+        assert r.status_code == 200
+        assert r.json() == []
+
+        # create
+        r = s.post(f"{API}/business/{bid}/services",
+                   json={"name": "Haircut", "duration_minutes": 30})
+        assert r.status_code == 200, r.text
+        svc = r.json()
+        for k in ("id", "business_id", "name", "duration_minutes", "sort_order", "is_active", "created_at"):
+            assert k in svc, f"missing {k} in {svc}"
+        assert svc["business_id"] == bid
+        assert svc["name"] == "Haircut"
+        assert svc["duration_minutes"] == 30
+        assert svc["is_active"] is True
+        sid = svc["id"]
+
+        # patch name + duration + sort_order
+        r = s.patch(f"{API}/business/{bid}/services/{sid}",
+                    json={"name": "Premium Haircut", "duration_minutes": 45, "sort_order": 5})
+        assert r.status_code == 200
+        upd = r.json()
+        assert upd["name"] == "Premium Haircut"
+        assert upd["duration_minutes"] == 45
+        assert upd["sort_order"] == 5
+
+        # toggle inactive
+        r = s.patch(f"{API}/business/{bid}/services/{sid}", json={"is_active": False})
+        assert r.status_code == 200
+        assert r.json()["is_active"] is False
+
+        # public list excludes inactive
+        r = requests.get(f"{API}/public/business/{bid}/services")
+        assert r.status_code == 200
+        assert all(svc["id"] != sid for svc in r.json())
+
+        # re-activate so it appears in public
+        s.patch(f"{API}/business/{bid}/services/{sid}", json={"is_active": True})
+        r = requests.get(f"{API}/public/business/{bid}/services")
+        assert any(it["id"] == sid for it in r.json())
+
+        # delete
+        r = s.delete(f"{API}/business/{bid}/services/{sid}")
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+        # subsequent delete -> 404
+        r = s.delete(f"{API}/business/{bid}/services/{sid}")
+        assert r.status_code == 404
+
+        # cleanup outlet
+        s.delete(f"{API}/business/{bid}")
+
+    def test_premium_max_services_cap_12(self, owner_session):
+        s, _ = owner_session
+        bid = self._make_temp_outlet(s)
+        for i in range(12):
+            r = s.post(f"{API}/business/{bid}/services",
+                       json={"name": f"Svc {i}", "duration_minutes": 10})
+            assert r.status_code == 200, f"create #{i}: {r.text}"
+        # 13th must fail
+        r = s.post(f"{API}/business/{bid}/services",
+                   json={"name": "Svc 13", "duration_minutes": 10})
+        assert r.status_code == 403
+        s.delete(f"{API}/business/{bid}")
+
+    def test_free_owner_cannot_manage_services(self, fresh_free_owner):
+        s, data, _ = fresh_free_owner
+        bid = data["businesses"][0]["id"]
+        # GET still works (empty list)
+        r = s.get(f"{API}/business/{bid}/services")
+        assert r.status_code == 200
+        assert r.json() == []
+        # POST blocked
+        r = s.post(f"{API}/business/{bid}/services",
+                   json={"name": "Trial", "duration_minutes": 15})
+        assert r.status_code == 403
+        assert "Premium" in r.json().get("detail", "")
+        # PATCH/DELETE on non-existent are still gated by paid plan
+        r = s.patch(f"{API}/business/{bid}/services/anything", json={"name": "x"})
+        assert r.status_code == 403
+        r = s.delete(f"{API}/business/{bid}/services/anything")
+        assert r.status_code == 403
+
+    def test_public_services_empty_for_outlet_without(self):
+        # demo-salon-andheri has no services seeded
+        r = requests.get(f"{API}/public/business/{DEMO_ID_2}/services")
+        assert r.status_code == 200
+        assert isinstance(r.json(), list)
+
+
+# ------------- Public Join with service_id validation -------------
+class TestJoinWithService:
+    def test_join_requires_service_when_outlet_has_active(self, owner_session):
+        s, _ = owner_session
+        # create a fresh outlet so we control service state cleanly
+        bid = s.post(f"{API}/business", json={
+            "business_name": f"TEST_JoinSvc_{uuid.uuid4().hex[:5]}",
+            "business_type": "salon",
+            "state": "Maharashtra", "pincode": "400001",
+        }).json()["id"]
+        svc = s.post(f"{API}/business/{bid}/services",
+                     json={"name": "Beard Trim", "duration_minutes": 20}).json()
+        sid = svc["id"]
+
+        # join without service_id -> 400
+        r = requests.post(f"{API}/public/business/{bid}/join",
+                          json={"customer_name": "TEST_NoSvc", "customer_phone": "9990001234"})
+        assert r.status_code == 400
+        assert "service" in r.json().get("detail", "").lower()
+
+        # join with service_id from another outlet -> 400
+        r = requests.post(f"{API}/public/business/{bid}/join",
+                          json={"customer_name": "TEST_Bad", "customer_phone": "9990001234",
+                                "service_id": "non-existent-id"})
+        assert r.status_code == 400
+        assert "unavailable" in r.json().get("detail", "").lower()
+
+        # valid service_id -> 200, denormalised fields present
+        r = requests.post(f"{API}/public/business/{bid}/join",
+                          json={"customer_name": "TEST_Good", "customer_phone": "9990001234",
+                                "service_id": sid})
+        assert r.status_code == 200, r.text
+        t = r.json()
+        assert t["service_id"] == sid
+        assert t["service_name"] == "Beard Trim"
+        assert t["service_duration_minutes"] == 20
+
+        # deactivate service -> using sid should now 400
+        s.patch(f"{API}/business/{bid}/services/{sid}", json={"is_active": False})
+        r = requests.post(f"{API}/public/business/{bid}/join",
+                          json={"customer_name": "TEST_Inactive", "customer_phone": "9990001234",
+                                "service_id": sid})
+        assert r.status_code == 400
+
+        # cleanup
+        s.delete(f"{API}/business/{bid}")
+
+    def test_join_no_service_required_when_outlet_has_none(self):
+        # demo-salon-andheri has no services seeded
+        r = requests.post(f"{API}/public/business/{DEMO_ID_2}/join",
+                          json={"customer_name": f"TEST_BWC_{uuid.uuid4().hex[:4]}",
+                                "customer_phone": "9990005678"})
+        assert r.status_code == 200, r.text
+
+
+# ------------- ETA calculation -------------
+class TestETACalculation:
+    def test_queue_summary_includes_estimated_wait_minutes(self):
+        r = requests.get(f"{API}/public/business/{DEMO_ID_1}/queue-summary")
+        assert r.status_code == 200
+        data = r.json()
+        assert "estimated_wait_minutes" in data
+        assert isinstance(data["estimated_wait_minutes"], int)
+
+    def test_eta_uses_service_duration_in_ticket(self, owner_session):
+        s, _ = owner_session
+        bid = s.post(f"{API}/business", json={
+            "business_name": f"TEST_ETA_{uuid.uuid4().hex[:5]}",
+            "business_type": "salon",
+            "state": "Maharashtra", "pincode": "400001",
+        }).json()["id"]
+        # set chairs=1 so wait = duration ahead
+        s.patch(f"{API}/business/{bid}", json={"total_chairs": 1})
+        sid = s.post(f"{API}/business/{bid}/services",
+                     json={"name": "Long Service", "duration_minutes": 40}).json()["id"]
+
+        # First joiner — alone, chairs available -> ETA 0
+        r1 = requests.post(f"{API}/public/business/{bid}/join",
+                           json={"customer_name": "TEST_E1", "customer_phone": "9990001234",
+                                 "service_id": sid})
+        assert r1.status_code == 200
+        t1 = r1.json()
+        tk1 = requests.get(f"{API}/public/ticket/{t1['id']}").json()
+        assert tk1["estimated_wait_minutes"] == 0
+
+        # Second joiner — one ticket ahead (40 min) / 1 chair = 40
+        r2 = requests.post(f"{API}/public/business/{bid}/join",
+                           json={"customer_name": "TEST_E2", "customer_phone": "9990001234",
+                                 "service_id": sid})
+        assert r2.status_code == 200
+        t2 = r2.json()
+        tk2 = requests.get(f"{API}/public/ticket/{t2['id']}").json()
+        assert tk2["position"] == 2
+        assert tk2["estimated_wait_minutes"] == 40
+
+        # queue-summary now should be sum(40+40)/1 = 80
+        qs = requests.get(f"{API}/public/business/{bid}/queue-summary").json()
+        assert qs["estimated_wait_minutes"] == 80
+
+        # cleanup
+        s.delete(f"{API}/business/{bid}")
+
+
+# ------------- Walk-in with service_id -------------
+class TestWalkInWithService:
+    def test_walk_in_with_service_attaches_fields(self, owner_session):
+        s, _ = owner_session
+        bid = s.post(f"{API}/business", json={
+            "business_name": f"TEST_WalkSvc_{uuid.uuid4().hex[:5]}",
+            "business_type": "salon",
+            "state": "Maharashtra", "pincode": "400001",
+        }).json()["id"]
+        sid = s.post(f"{API}/business/{bid}/services",
+                     json={"name": "Spa", "duration_minutes": 25}).json()["id"]
+
+        r = s.post(f"{API}/business/{bid}/queue/walk-in",
+                   json={"customer_name": "TEST_WalkSvc", "customer_phone": "9990005678",
+                         "service_id": sid})
+        assert r.status_code == 200, r.text
+        t = r.json()
+        assert t["service_id"] == sid
+        assert t["service_name"] == "Spa"
+        assert t["service_duration_minutes"] == 25
+        s.delete(f"{API}/business/{bid}")
+
+
+# ------------- Admin user plan update accepts premium_plus -------------
+class TestAdminPlanUpdate:
+    def test_super_admin_can_set_premium_plus(self, super_session, fresh_free_owner):
+        sup_s, _ = super_session
+        own_s, own_data, _ = fresh_free_owner
+        uid = own_data["user"]["id"]
+
+        r = sup_s.patch(f"{API}/admin/users/{uid}", json={"plan": "premium_plus"})
+        assert r.status_code == 200, r.text
+        assert r.json()["plan"] == "premium_plus"
+
+        me = own_s.get(f"{API}/auth/me").json()
+        assert me["user"]["plan"] == "premium_plus"
+
+        # premium_plus owner can create up to 25 outlets (we just create a couple)
+        r = own_s.post(f"{API}/business", json={
+            "business_name": "TEST_PP_Outlet1",
+            "state": "Maharashtra", "pincode": "400001",
+        })
+        assert r.status_code == 200
+        # premium_plus chairs cap = 10; 11 must 403
+        bid = r.json()["id"]
+        r = own_s.patch(f"{API}/business/{bid}", json={"total_chairs": 11})
+        assert r.status_code == 403
+        r = own_s.patch(f"{API}/business/{bid}", json={"total_chairs": 10})
+        assert r.status_code == 200
+        # tokens cap = 500
+        r = own_s.patch(f"{API}/business/{bid}", json={"token_limit": 600})
+        assert r.status_code == 403
+        r = own_s.patch(f"{API}/business/{bid}", json={"token_limit": 500})
+        assert r.status_code == 200
+
+    def test_invalid_plan_rejected(self, super_session, owner_session):
+        sup_s, _ = super_session
+        # Use the seeded admin user id
+        users = sup_s.get(f"{API}/admin/users").json()
+        admin_user = next(u for u in users if u["email"] == ADMIN_EMAIL)
+        r = sup_s.patch(f"{API}/admin/users/{admin_user['id']}",
+                        json={"plan": "platinum"})
+        assert r.status_code in (400, 422)
+
+
+# ------------- Premium chairs/tokens caps -------------
+class TestPremiumLimits:
+    def test_premium_cannot_exceed_10_chairs_or_200_tokens(self, owner_session):
+        s, _ = owner_session
+        bid = s.post(f"{API}/business", json={
+            "business_name": f"TEST_PremCaps_{uuid.uuid4().hex[:5]}",
+            "state": "Maharashtra", "pincode": "400001",
+        }).json()["id"]
+        # 11 chairs -> 403
+        r = s.patch(f"{API}/business/{bid}", json={"total_chairs": 11})
+        assert r.status_code == 403
+        r = s.patch(f"{API}/business/{bid}", json={"total_chairs": 10})
+        assert r.status_code == 200
+        # tokens 201 -> 403
+        r = s.patch(f"{API}/business/{bid}", json={"token_limit": 201})
+        assert r.status_code == 403
+        r = s.patch(f"{API}/business/{bid}", json={"token_limit": 200})
+        assert r.status_code == 200
+        s.delete(f"{API}/business/{bid}")
+
+    def test_premium_max_3_outlets(self):
+        # register fresh, upgrade to premium, then try to create 3 more (already has 1)
+        s = requests.Session()
+        email = f"test_p3_{uuid.uuid4().hex[:8]}@example.com"
+        reg = s.post(f"{API}/auth/register", json={
+            "email": email, "password": "password123",
+            "owner_name": "P3", "business_name": "TEST_P3_1",
+            "business_type": "salon", "state": "Maharashtra", "pincode": "400001",
+        })
+        assert reg.status_code == 200
+        uid = reg.json()["user"]["id"]
+        sup = requests.Session()
+        sup.post(f"{API}/auth/login", json={"email": SUPER_EMAIL, "password": SUPER_PASSWORD})
+        sup.patch(f"{API}/admin/users/{uid}", json={"plan": "premium"})
+
+        # 2 more -> ok (total 3)
+        for i in range(2):
+            r = s.post(f"{API}/business", json={
+                "business_name": f"TEST_P3_{i+2}",
+                "state": "Maharashtra", "pincode": "400001",
+            })
+            assert r.status_code == 200, r.text
+        # 4th -> 403
+        r = s.post(f"{API}/business", json={
+            "business_name": "TEST_P3_4",
+            "state": "Maharashtra", "pincode": "400001",
+        })
+        assert r.status_code == 403

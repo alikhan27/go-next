@@ -1,9 +1,33 @@
 // Single source of truth for the "What's new" feed inside the app.
 // When adding a new release, bump LATEST_VERSION and prepend an entry.
 
-export const LATEST_VERSION = "v2.6";
+export const LATEST_VERSION = "v2.7";
 
 export const RELEASES = [
+  {
+    version: "v2.7",
+    date: "Feb 2026",
+    title: "Admin tables now search, sort and paginate",
+    tag: "Update",
+    highlights: [
+      {
+        heading: "Instant search",
+        body: "Every admin table (Owners, Outlets, Security) has a search box that filters by the fields that make sense \u2014 email, name, plan, business name, owner, city, state or pincode.",
+      },
+      {
+        heading: "Click-to-sort columns",
+        body: "Tap any column header to sort ascending, again for descending, once more to clear. Sort arrows make the current order obvious at a glance.",
+      },
+      {
+        heading: "Page sizes + prev / next",
+        body: "Pick 10, 25, 50 or 100 rows per page. Pagination controls stay at the bottom so the table header is always reachable.",
+      },
+      {
+        heading: "Live row count",
+        body: "The \u201cN rows\u201d counter reflects the filtered total so you always know what you\u2019re looking at.",
+      },
+    ],
+  },
   {
     version: "v2.6",
     date: "Feb 2026",

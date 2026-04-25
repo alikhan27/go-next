@@ -175,25 +175,26 @@ export default function Landing() {
               Start free. <span className="italic">Grow when you&apos;re ready.</span>
             </h2>
             <p className="mt-4 text-stone-600 text-base sm:text-lg max-w-xl">
-              Two plans. Transparent limits. Move to Premium when you open a second outlet or want the full analytics, TV display and higher tokens.
+              Three plans. Transparent limits. Move up when you open a second outlet, want custom services with accurate ETAs, or run a full chain.
             </p>
           </div>
 
-          <div className="mt-12 grid gap-6 md:grid-cols-2 stagger-in">
+          <div className="mt-12 grid gap-6 md:grid-cols-3 stagger-in">
+            {/* Free */}
             <div className="rounded-3xl border border-stone-200 bg-[#F9F8F6] p-8" data-testid="pricing-free">
               <div className="flex items-baseline justify-between">
                 <p className="text-[11px] uppercase tracking-[0.26em] text-stone-500">Free</p>
                 <span className="rounded-full bg-stone-200 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-stone-600">for new salons</span>
               </div>
-              <p className="font-serif-display text-6xl mt-4">₹0</p>
+              <p className="font-serif-display text-5xl mt-4">₹0</p>
               <p className="text-sm text-stone-500">forever — no card needed</p>
               <ul className="mt-7 space-y-3 text-sm">
                 {[
-                  "1 outlet with up to 2 stations",
+                  "1 outlet with up to 3 stations",
                   "Up to 50 tokens per day",
                   "Live queue board & customer QR",
                   "Live customer ticket tracking",
-                  "14-day analytics",
+                  "7-day analytics",
                 ].map((f) => (
                   <li key={f} className="flex items-start gap-2">
                     <CheckCircle2 className="h-4 w-4 text-[#7D9276] flex-none mt-0.5" />
@@ -208,6 +209,7 @@ export default function Landing() {
               </Link>
             </div>
 
+            {/* Premium */}
             <div className="rounded-3xl border-2 border-[#C47C5C]/60 bg-white p-8 shadow-sm relative overflow-hidden" data-testid="pricing-premium">
               <div
                 className="absolute inset-0 opacity-60 pointer-events-none"
@@ -216,15 +218,16 @@ export default function Landing() {
               <div className="relative">
                 <div className="flex items-baseline justify-between">
                   <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Premium</p>
-                  <span className="rounded-full bg-[#2C302E] text-white px-3 py-1 text-[10px] uppercase tracking-[0.22em]">Best for chains</span>
+                  <span className="rounded-full bg-[#C47C5C] text-white px-3 py-1 text-[10px] uppercase tracking-[0.22em]">Most popular</span>
                 </div>
-                <p className="font-serif-display text-6xl mt-4">$19<span className="text-lg text-stone-500"> /mo</span></p>
+                <p className="font-serif-display text-5xl mt-4">$19<span className="text-base text-stone-500"> /mo</span></p>
                 <p className="text-sm text-stone-500">per owner · cancel anytime</p>
                 <ul className="mt-7 space-y-3 text-sm">
                   {[
-                    "Up to 10 outlets",
-                    "Up to 100 stations per outlet",
-                    "Up to 1,000 tokens per day",
+                    "Up to 3 outlets",
+                    "Up to 10 stations per outlet",
+                    "Up to 200 tokens per day",
+                    "Custom services & accurate ETAs",
                     "Public TV \u201cNow Serving\u201d display",
                     "Full 90-day analytics & heatmap",
                     "Priority support",
@@ -240,12 +243,49 @@ export default function Landing() {
                     Start free · upgrade anytime
                   </Button>
                 </Link>
-                <p className="mt-3 text-[11px] text-stone-500 text-center">
-                  Go-Next is still in preview — Premium is activated manually by our team today.
-                </p>
+              </div>
+            </div>
+
+            {/* Premium Plus */}
+            <div className="rounded-3xl border border-stone-200 bg-[#2C302E] text-white p-8 relative overflow-hidden" data-testid="pricing-premium-plus">
+              <div
+                className="absolute inset-0 opacity-50 pointer-events-none"
+                style={{ background: "radial-gradient(420px 220px at 10% 110%, rgba(196,124,92,0.35), transparent 60%)" }}
+              />
+              <div className="relative">
+                <div className="flex items-baseline justify-between">
+                  <p className="text-[11px] uppercase tracking-[0.26em] text-[#E3A587]">Premium Plus</p>
+                  <span className="rounded-full bg-[#C47C5C] text-white px-3 py-1 text-[10px] uppercase tracking-[0.22em]">Best for chains</span>
+                </div>
+                <p className="font-serif-display text-5xl mt-4">$49<span className="text-base text-stone-300"> /mo</span></p>
+                <p className="text-sm text-stone-300">per owner · cancel anytime</p>
+                <ul className="mt-7 space-y-3 text-sm">
+                  {[
+                    "Up to 25 outlets",
+                    "Up to 10 stations per outlet",
+                    "Up to 500 tokens per day",
+                    "Custom services & accurate ETAs",
+                    "Public TV \u201cNow Serving\u201d display",
+                    "180-day analytics history",
+                    "Dedicated success manager",
+                  ].map((f) => (
+                    <li key={f} className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-[#E3A587] flex-none mt-0.5" />
+                      <span className="text-stone-100">{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Link to="/register" className="mt-8 block" data-testid="pricing-premium-plus-cta">
+                  <Button className="w-full rounded-full bg-white hover:bg-stone-100 text-[#2C302E] h-11 press">
+                    Talk to us
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
+          <p className="mt-6 text-[11px] text-stone-500 text-center">
+            Go-Next is in preview — paid plans are activated manually by our team today. Stripe self-checkout is coming soon.
+          </p>
         </div>
       </section>
 

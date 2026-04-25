@@ -70,6 +70,11 @@ export default function TicketStatus() {
           <CheckCircle2 className="mx-auto h-10 w-10 text-[#7D9276]" />
           <h2 className="font-serif-display text-4xl mt-4">All done.</h2>
           <p className="mt-2 text-stone-600">Thank you for visiting {business?.business_name}.</p>
+          {ticket.paid && (
+            <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[#7D9276]/15 text-[#4c6547] border border-[#7D9276]/30 px-3 py-1 text-[11px] uppercase tracking-[0.22em]" data-testid="ticket-paid-badge">
+              <CheckCircle2 className="h-3 w-3" /> Paid
+            </div>
+          )}
         </div>
       );
     }
@@ -133,6 +138,21 @@ export default function TicketStatus() {
               <div className="rounded-2xl bg-[#F4EFE8] px-4 py-3 text-center">
                 <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Your name</p>
                 <p className="font-serif-display text-2xl mt-1 truncate">{ticket.customer_name}</p>
+              </div>
+            </div>
+          )}
+
+          {(ticket.service_name || ticket.service_price > 0) && (
+            <div className="mt-4 rounded-2xl border border-stone-200 px-4 py-3 flex items-center justify-between" data-testid="ticket-service-row">
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Service</p>
+                <p className="font-medium truncate">{ticket.service_name || "—"}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Total</p>
+                <p className="font-serif-display text-2xl text-[#A86246]" data-testid="ticket-total">
+                  {ticket.service_price > 0 ? `₹${Number(ticket.service_price).toLocaleString("en-IN")}` : "—"}
+                </p>
               </div>
             </div>
           )}
