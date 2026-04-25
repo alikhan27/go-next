@@ -9,6 +9,11 @@ import { Label } from "../components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter,
 } from "../components/ui/dialog";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
+import { Checkbox } from "../components/ui/checkbox";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Badge } from "../components/ui/badge";
@@ -34,6 +39,25 @@ function statusStyle(status) {
   return "bg-red-50 text-red-600 border-red-100";
 }
 
+function serviceListForTicket(ticket) {
+  if (Array.isArray(ticket.service_names) && ticket.service_names.length > 0) {
+    return ticket.service_names.filter(Boolean);
+  }
+  if (ticket.service_name) {
+    return ticket.service_name
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function paymentMethodLabel(method) {
+  if (method === "online") return "Online";
+  if (method === "cash") return "Cash";
+  return null;
+}
+
 export default function Dashboard() {
   const { businessId } = useParams();
   const { auth, updateBusiness } = useAuth();
@@ -41,10 +65,19 @@ export default function Dashboard() {
   const business = businesses.find((b) => b.id === businessId);
   const [tickets, setTickets] = useState([]);
   const [recent, setRecent] = useState([]);
+  const [services, setServices] = useState([]);
   const [stats, setStats] = useState({ waiting: 0, serving: 0, completed_today: 0, no_show_today: 0, revenue_today: 0 });
   const [walkInOpen, setWalkInOpen] = useState(false);
-  const [walkIn, setWalkIn] = useState({ customer_name: "", customer_phone: "" });
+  const [walkIn, setWalkIn] = useState({ customer_name: "", customer_phone: "", service_ids: [] });
   const [isOnline, setIsOnline] = useState(business?.is_online ?? true);
+  const [completeOpen, setCompleteOpen] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [ticketToComplete, setTicketToComplete] = useState(null);
+  const [completion, setCompletion] = useState({ service_ids: [], final_amount: "0", paid: false, payment_method: "cash", amountDirty: false });
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [paymentTarget, setPaymentTarget] = useState(null);
+  const [paymentMethodChoice, setPaymentMethodChoice] = useState("cash");
 
   useEffect(() => {
     if (business) setIsOnline(!!business.is_online);
@@ -53,14 +86,16 @@ export default function Dashboard() {
   const load = useCallback(async () => {
     if (!business) return;
     try {
-      const [q, s, r] = await Promise.all([
+      const [q, s, r, svc] = await Promise.all([
         api.get(`/business/${business.id}/queue`),
         api.get(`/business/${business.id}/stats`),
         api.get(`/business/${business.id}/recent-completed`),
+        api.get(`/business/${business.id}/services`).catch(() => ({ data: [] })),
       ]);
       setTickets(q.data);
       setStats(s.data);
       setRecent(r.data);
+      setServices((svc.data || []).filter((item) => item.is_active !== false));
     } catch {
       /* ignore */
     }
@@ -74,6 +109,25 @@ export default function Dashboard() {
 
   const waiting = useMemo(() => tickets.filter((t) => t.status === "waiting"), [tickets]);
   const serving = useMemo(() => tickets.filter((t) => t.status === "serving"), [tickets]);
+  const suggestedTotal = useMemo(
+    () => services
+      .filter((svc) => completion.service_ids.includes(svc.id))
+      .reduce((sum, svc) => sum + Number(svc.price || 0), 0),
+    [completion.service_ids, services],
+  );
+  const walkInSelectedServices = useMemo(
+    () => services.filter((svc) => walkIn.service_ids.includes(svc.id)),
+    [services, walkIn.service_ids],
+  );
+  const walkInSelectedDuration = useMemo(
+    () => walkInSelectedServices.reduce((sum, svc) => sum + Number(svc.duration_minutes || 0), 0),
+    [walkInSelectedServices],
+  );
+
+  useEffect(() => {
+    if (!completeOpen || completion.amountDirty) return;
+    setCompletion((prev) => ({ ...prev, final_amount: String(suggestedTotal || 0) }));
+  }, [completeOpen, completion.amountDirty, suggestedTotal]);
 
   if (auth === null) return null;
   if (!business) {
@@ -86,12 +140,21 @@ export default function Dashboard() {
     try {
       await api.post(`/business/${business.id}/queue/walk-in`, walkIn);
       toast.success(`Added ${walkIn.customer_name}`);
-      setWalkIn({ customer_name: "", customer_phone: "" });
+      setWalkIn({ customer_name: "", customer_phone: "", service_ids: [] });
       setWalkInOpen(false);
       load();
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
     }
+  };
+
+  const toggleWalkInService = (serviceId) => {
+    setWalkIn((prev) => ({
+      ...prev,
+      service_ids: prev.service_ids.includes(serviceId)
+        ? prev.service_ids.filter((id) => id !== serviceId)
+        : [...prev.service_ids, serviceId],
+    }));
   };
 
   const updateStatus = async (id, status) => {
@@ -105,7 +168,7 @@ export default function Dashboard() {
 
   const togglePaid = async (id, paid) => {
     try {
-      await api.patch(`/business/${business.id}/queue/${id}/paid`, { paid });
+      await api.patch(`/business/${business.id}/queue/${id}/paid`, { paid, payment_method: paid ? "cash" : null });
       toast.success(paid ? "Marked paid" : "Marked unpaid");
       load();
     } catch (err) {
@@ -120,6 +183,85 @@ export default function Dashboard() {
       load();
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    }
+  };
+
+  const openCompleteDialog = (ticket) => {
+    const selectedIds = (ticket.service_ids?.length
+      ? ticket.service_ids
+      : ticket.service_id
+        ? [ticket.service_id]
+        : []).filter((id) => id && services.some((svc) => svc.id === id));
+    const baseAmount = ticket.service_price > 0
+      ? Number(ticket.service_price)
+      : services
+        .filter((svc) => selectedIds.includes(svc.id))
+        .reduce((sum, svc) => sum + Number(svc.price || 0), 0);
+    setTicketToComplete(ticket);
+    setCompletion({
+      service_ids: selectedIds,
+      final_amount: String(baseAmount || 0),
+      paid: !!ticket.paid,
+      payment_method: ticket.payment_method || "cash",
+      amountDirty: false,
+    });
+    setCompleteOpen(true);
+  };
+
+  const toggleCompletionService = (serviceId) => {
+    setCompletion((prev) => ({
+      ...prev,
+      service_ids: prev.service_ids.includes(serviceId)
+        ? prev.service_ids.filter((id) => id !== serviceId)
+        : [...prev.service_ids, serviceId],
+    }));
+  };
+
+  const submitCompletion = async (e) => {
+    e.preventDefault();
+    if (!ticketToComplete) return;
+    setCompleting(true);
+    try {
+      await api.post(`/business/${business.id}/queue/${ticketToComplete.id}/complete`, {
+        service_ids: completion.service_ids,
+        final_amount: Number(completion.final_amount) || 0,
+        paid: completion.paid,
+        payment_method: completion.payment_method,
+      });
+      toast.success("Ticket completed");
+      setCompleteOpen(false);
+      setTicketToComplete(null);
+      load();
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    } finally {
+      setCompleting(false);
+    }
+  };
+
+  const openPaymentDialog = (ticket) => {
+    setPaymentTarget(ticket);
+    setPaymentMethodChoice(ticket.payment_method || "cash");
+    setPaymentOpen(true);
+  };
+
+  const submitPaymentMethod = async (e) => {
+    e.preventDefault();
+    if (!paymentTarget) return;
+    setPaymentSubmitting(true);
+    try {
+      await api.patch(`/business/${business.id}/queue/${paymentTarget.id}/paid`, {
+        paid: true,
+        payment_method: paymentMethodChoice,
+      });
+      toast.success(`Marked paid via ${paymentMethodChoice}`);
+      setPaymentOpen(false);
+      setPaymentTarget(null);
+      load();
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    } finally {
+      setPaymentSubmitting(false);
     }
   };
 
@@ -218,6 +360,55 @@ export default function Dashboard() {
                           onChange={(e) => setWalkIn({ ...walkIn, customer_phone: e.target.value })}
                           className="mt-1.5 h-11" data-testid="walkin-phone" />
                       </div>
+                      {services.length > 0 && (
+                        <div>
+                          <Label>Services requested</Label>
+                          <p className="mt-1 text-xs text-stone-500">
+                            Optional. Adding services helps wait times stay more accurate.
+                          </p>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {services.map((svc) => {
+                              const checked = walkIn.service_ids.includes(svc.id);
+                              return (
+                                <label
+                                  key={svc.id}
+                                  className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
+                                    checked
+                                      ? "border-[#C47C5C]/50 bg-[#F4EFE8]"
+                                      : "border-stone-200"
+                                  }`}
+                                >
+                                  <span className="pt-0.5">
+                                    <Checkbox
+                                      checked={checked}
+                                      onCheckedChange={() => toggleWalkInService(svc.id)}
+                                    />
+                                  </span>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-medium text-stone-900">{svc.name}</span>
+                                    <span className="mt-0.5 block text-[11px] text-stone-500">
+                                      {svc.duration_minutes} min
+                                      {svc.price > 0 && ` · ₹${Number(svc.price).toLocaleString("en-IN")}`}
+                                    </span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          {walkInSelectedServices.length > 0 && (
+                            <div className="mt-3 rounded-xl bg-[#F4EFE8] px-4 py-3 text-sm text-[#7A4C38]" data-testid="walkin-services-summary">
+                              <span className="font-medium">
+                                {walkInSelectedServices.length === 1
+                                  ? walkInSelectedServices[0].name
+                                  : `${walkInSelectedServices.length} services selected`}
+                              </span>
+                              <span className="ml-2 text-xs">
+                                {walkInSelectedDuration > 0 && `~ ${walkInSelectedDuration} min`}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <DialogFooter>
                         <Button type="submit" className="rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white h-11 px-6" data-testid="walkin-submit">
                           Add to queue
@@ -235,6 +426,179 @@ export default function Dashboard() {
                 </Button>
               </div>
             </div>
+
+            <Dialog
+              open={completeOpen}
+              onOpenChange={(open) => {
+                setCompleteOpen(open);
+                if (!open) {
+                  setTicketToComplete(null);
+                  setCompleting(false);
+                }
+              }}
+            >
+              <DialogContent className="sm:max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle className="font-serif-display text-2xl">Collect payment</DialogTitle>
+                  <DialogDescription>
+                    Confirm the services provided, adjust the amount if needed, then mark the ticket as done.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={submitCompletion} className="space-y-5" data-testid="complete-ticket-form">
+                  <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+                    Token <span className="font-medium text-stone-900">#{String(ticketToComplete?.token_number || "").padStart(3, "0")}</span>
+                    {" · "}
+                    <span className="font-medium text-stone-900">{ticketToComplete?.customer_name}</span>
+                  </div>
+
+                  {services.length > 0 && (
+                    <div>
+                      <Label>Services provided</Label>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {services.map((svc) => {
+                          const checked = completion.service_ids.includes(svc.id);
+                          return (
+                            <label
+                              key={svc.id}
+                              className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
+                                checked
+                                  ? "border-[#C47C5C]/50 bg-[#F4EFE8]"
+                                  : "border-stone-200"
+                              }`}
+                            >
+                              <span className="pt-0.5">
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={() => toggleCompletionService(svc.id)}
+                                />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-medium text-stone-900">{svc.name}</span>
+                                <span className="mt-0.5 block text-[11px] text-stone-500">
+                                  {svc.duration_minutes} min
+                                  {" · "}
+                                  {svc.price > 0 ? `₹${Number(svc.price).toLocaleString("en-IN")}` : "Free"}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <Label>Amount to pay</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        className="mt-1.5 h-11"
+                        value={completion.final_amount}
+                        onChange={(e) => setCompletion((prev) => ({
+                          ...prev,
+                          final_amount: e.target.value,
+                          amountDirty: true,
+                        }))}
+                        data-testid="complete-ticket-amount"
+                      />
+                      <p className="mt-1 text-xs text-stone-500">
+                        Suggested total: ₹{Number(suggestedTotal || 0).toLocaleString("en-IN")}
+                      </p>
+                    </div>
+                    <div className="space-y-3">
+                      <label className="flex w-full items-center gap-3 rounded-xl border border-stone-200 px-4 py-3">
+                        <Checkbox
+                          checked={completion.paid}
+                          onCheckedChange={(checked) => setCompletion((prev) => ({ ...prev, paid: !!checked }))}
+                          data-testid="complete-ticket-paid"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-stone-900">Payment received</span>
+                          <span className="block text-xs text-stone-500">Required before marking the ticket done.</span>
+                        </span>
+                      </label>
+                      <div>
+                        <Label>Paid by</Label>
+                        <Select
+                          value={completion.payment_method}
+                          onValueChange={(value) => setCompletion((prev) => ({ ...prev, payment_method: value }))}
+                        >
+                          <SelectTrigger className="mt-1.5 h-11 rounded-xl border-stone-300 bg-white" data-testid="complete-ticket-payment-method">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cash">Cash</SelectItem>
+                            <SelectItem value="online">Online</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <DialogFooter>
+                    <Button
+                      type="submit"
+                      disabled={completing || !completion.paid}
+                      className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white h-11 px-6"
+                      data-testid="complete-ticket-submit"
+                    >
+                      {completing ? "Finishing…" : "Mark as done"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog
+              open={paymentOpen}
+              onOpenChange={(open) => {
+                setPaymentOpen(open);
+                if (!open) {
+                  setPaymentTarget(null);
+                  setPaymentSubmitting(false);
+                }
+              }}
+            >
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="font-serif-display text-2xl">Payment method</DialogTitle>
+                  <DialogDescription>
+                    Choose how this payment was received before marking the ticket paid.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={submitPaymentMethod} className="space-y-4" data-testid="payment-method-form">
+                  <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+                    Token <span className="font-medium text-stone-900">#{String(paymentTarget?.token_number || "").padStart(3, "0")}</span>
+                    {" · "}
+                    <span className="font-medium text-stone-900">{paymentTarget?.customer_name}</span>
+                  </div>
+                  <div>
+                    <Label>Paid by</Label>
+                    <Select value={paymentMethodChoice} onValueChange={setPaymentMethodChoice}>
+                      <SelectTrigger className="mt-1.5 h-11 rounded-xl border-stone-300 bg-white" data-testid="payment-method-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="online">Online</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      type="submit"
+                      disabled={paymentSubmitting}
+                      className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white h-11 px-6"
+                      data-testid="payment-method-submit"
+                    >
+                      {paymentSubmitting ? "Saving…" : "Confirm payment"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
 
             <Table>
               <TableHeader>
@@ -274,7 +638,7 @@ export default function Dashboard() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right pr-5">
-                      <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-2">
                         {t.status === "waiting" && (
                           <>
                             <Button size="sm" variant="outline" className="rounded-full border-stone-300"
@@ -294,26 +658,34 @@ export default function Dashboard() {
                         {t.status === "serving" && (
                           <>
                             {t.service_price > 0 && (
-                              <Button
-                                size="sm"
-                                variant={t.paid ? "default" : "outline"}
-                                className={`rounded-full ${
-                                  t.paid
-                                    ? "bg-[#7D9276] hover:bg-[#6a8064] text-white"
-                                    : "border-[#C47C5C]/40 text-[#A86246] hover:bg-[#F4EFE8]"
-                                }`}
-                                onClick={() => togglePaid(t.id, !t.paid)}
-                                title={t.paid ? "Tap to mark unpaid" : "Tap to mark paid"}
-                                data-testid={`paid-toggle-${t.token_number}`}
-                              >
-                                {t.paid
-                                  ? <><BadgeCheck className="h-3.5 w-3.5 mr-1" /> Paid · ₹{Number(t.service_price).toLocaleString("en-IN")}</>
-                                  : <>Mark paid · ₹{Number(t.service_price).toLocaleString("en-IN")}</>}
-                              </Button>
+                              t.paid ? (
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white"
+                                  onClick={() => togglePaid(t.id, false)}
+                                  title="Tap to mark unpaid"
+                                  data-testid={`paid-toggle-${t.token_number}`}
+                                >
+                                  <BadgeCheck className="h-3.5 w-3.5 mr-1" />
+                                  Paid{paymentMethodLabel(t.payment_method) ? ` · ${paymentMethodLabel(t.payment_method)}` : ""} · ₹{Number(t.service_price).toLocaleString("en-IN")}
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-full border-[#C47C5C]/40 text-[#A86246] hover:bg-[#F4EFE8]"
+                                  onClick={() => openPaymentDialog(t)}
+                                  title="Choose payment method"
+                                  data-testid={`paid-toggle-${t.token_number}`}
+                                >
+                                  Mark paid · ₹{Number(t.service_price).toLocaleString("en-IN")}
+                                </Button>
+                              )
                             )}
                             <Button size="sm"
                               className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white"
-                              onClick={() => updateStatus(t.id, "completed")}
+                              onClick={() => openCompleteDialog(t)}
                               data-testid={`complete-${t.token_number}`}>
                               <Check className="h-3.5 w-3.5 mr-1" /> Done
                             </Button>
@@ -335,48 +707,102 @@ export default function Dashboard() {
 
             {recent.length > 0 && (
               <div className="mt-8 border-t border-stone-200 pt-6" data-testid="recent-completed">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-serif-display text-lg">Today&apos;s completions</h3>
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-stone-500">{recent.length} of last 10</p>
-                </div>
-                <div className="space-y-2">
-                  {recent.map((t) => (
-                    <div
-                      key={t.id}
-                      className="flex items-center justify-between rounded-xl border border-stone-200 px-4 py-3 hover:bg-stone-50/60"
-                      data-testid={`recent-row-${t.token_number}`}
-                    >
-                      <div className="min-w-0 flex items-center gap-3">
-                        <span className="font-serif-display text-2xl text-stone-400 tabular-nums">
-                          #{String(t.token_number).padStart(3, "0")}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="font-medium text-stone-800 truncate">{t.customer_name}</p>
-                          <p className="text-xs text-stone-500 truncate">
-                            {t.service_name || "—"}
-                            {t.service_price > 0 && ` · ₹${Number(t.service_price).toLocaleString("en-IN")}`}
-                          </p>
-                        </div>
-                      </div>
-                      {t.service_price > 0 ? (
-                        <Button
-                          size="sm"
-                          variant={t.paid ? "default" : "outline"}
-                          className={`rounded-full ${
-                            t.paid
-                              ? "bg-[#7D9276] hover:bg-[#6a8064] text-white"
-                              : "border-[#C47C5C]/40 text-[#A86246] hover:bg-[#F4EFE8]"
-                          }`}
-                          onClick={() => togglePaid(t.id, !t.paid)}
-                          data-testid={`recent-paid-toggle-${t.token_number}`}
-                        >
-                          {t.paid ? <><BadgeCheck className="h-3.5 w-3.5 mr-1" /> Paid</> : "Mark paid"}
-                        </Button>
-                      ) : (
-                        <span className="text-[10px] uppercase tracking-[0.18em] text-stone-400">No price</span>
-                      )}
+                <div className="rounded-2xl border border-stone-200 bg-[#FCFBF9] p-5 sm:p-6">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <h3 className="font-serif-display text-xl">Today&apos;s completions</h3>
+                      <p className="mt-1 text-sm text-stone-500">Recent checkouts, payment status, and services provided.</p>
                     </div>
-                  ))}
+                    <div className="rounded-full border border-stone-200 bg-white px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-stone-500">
+                      {recent.length} of last 10
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {recent.map((t) => (
+                      <div
+                        key={t.id}
+                        className="rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-[0_1px_0_rgba(28,25,23,0.03)]"
+                        data-testid={`recent-row-${t.token_number}`}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div className="min-w-0 flex items-start gap-3">
+                            <div className="rounded-xl bg-[#F4EFE8] px-3 py-2 text-center">
+                              <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">Token</div>
+                              <div className="font-serif-display text-xl leading-none text-[#A86246]">
+                                #{String(t.token_number).padStart(3, "0")}
+                              </div>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-stone-900">{t.customer_name}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-stone-500">
+                                <span className="rounded-full bg-stone-100 px-2.5 py-1">
+                                  {t.service_count > 1 ? `${t.service_count} services` : t.service_name || "No service logged"}
+                                </span>
+                                {t.service_price > 0 && (
+                                  <span className="rounded-full bg-[#F4EFE8] px-2.5 py-1 text-[#A86246]">
+                                    ₹{Number(t.service_price).toLocaleString("en-IN")}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            {t.service_price > 0 ? (
+                              t.paid ? (
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white"
+                                  onClick={() => togglePaid(t.id, false)}
+                                  data-testid={`recent-paid-toggle-${t.token_number}`}
+                                >
+                                  <BadgeCheck className="h-3.5 w-3.5 mr-1" />
+                                  Paid{paymentMethodLabel(t.payment_method) ? ` · ${paymentMethodLabel(t.payment_method)}` : ""}
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-full border-[#C47C5C]/40 text-[#A86246] hover:bg-[#F4EFE8]"
+                                  onClick={() => openPaymentDialog(t)}
+                                  data-testid={`recent-paid-toggle-${t.token_number}`}
+                                >
+                                  Mark paid
+                                </Button>
+                              )
+                            ) : (
+                              <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-400">
+                                Price not set
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {serviceListForTicket(t).length > 0 && (
+                          <Accordion type="single" collapsible className="mt-3">
+                            <AccordionItem value={`recent-${t.id}`} className="border-b-0">
+                              <AccordionTrigger className="rounded-xl bg-stone-50 px-3 py-2 text-xs font-medium text-stone-600 hover:no-underline">
+                                View services provided
+                              </AccordionTrigger>
+                              <AccordionContent className="px-1 pb-1 pt-3">
+                                <div className="flex flex-wrap gap-2">
+                                  {serviceListForTicket(t).map((serviceName, index) => (
+                                    <span
+                                      key={`${t.id}-service-${index}`}
+                                      className="rounded-full border border-stone-200 bg-[#FCFBF9] px-2.5 py-1 text-xs text-stone-700"
+                                    >
+                                      {serviceName}
+                                    </span>
+                                  ))}
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

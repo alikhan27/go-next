@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-
+from pydantic import BaseModel
 from ..config import LOCKOUT_THRESHOLD, LOCKOUT_WINDOW_MINUTES
 from ..db import db
 from ..models import AdminUserUpdate
@@ -11,6 +11,32 @@ from ..services import clear_attempts, public_business
 
 router = APIRouter(prefix="/admin")
 
+VALID_THEME_IDS = {"warm-sand", "midnight", "matcha", "arctic", "bloom"}
+class ThemePayload(BaseModel):
+    theme_id: str
+
+@router.get("/theme")
+async def get_theme():
+    """Public — anyone can fetch the active theme (needed on app load)."""
+    doc = await db.settings.find_one({"key": "theme"})
+    theme_id = doc["value"] if doc else "warm-sand"
+    return {"theme_id": theme_id}
+
+
+@router.patch("/theme")
+async def update_theme(
+    payload: ThemePayload,
+    user: dict = Depends(get_current_user),
+):
+    require_super_admin(user)
+    if payload.theme_id not in VALID_THEME_IDS:
+        raise HTTPException(status_code=400, detail=f"Invalid theme_id.")
+    await db.settings.update_one(
+        {"key": "theme"},
+        {"$set": {"key": "theme", "value": payload.theme_id}},
+        upsert=True,
+    )
+    return {"theme_id": payload.theme_id}
 
 @router.get("/stats")
 async def admin_stats(user: dict = Depends(get_current_user)):
@@ -112,6 +138,7 @@ async def admin_delete_business(business_id: str, user: dict = Depends(get_curre
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Outlet not found")
     await db.queue.delete_many({"business_id": business_id})
+    await db.services.delete_many({"business_id": business_id})
     return {"ok": True}
 
 

@@ -4,6 +4,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from .config import LOCKOUT_THRESHOLD, LOCKOUT_WINDOW_MINUTES, PLAN_LIMITS
 from .db import db
@@ -30,19 +32,50 @@ def require_paid_plan(user: dict) -> None:
         )
 
 
-async def resolve_service_for_ticket(business_id: str, service_id: str | None) -> dict | None:
-    """Fetch the active service belonging to this outlet, or 404 if it
-    doesn't exist or belongs to a different outlet. Returns None when no
-    service was selected (outlet may not use services at all)."""
-    if not service_id:
-        return None
-    svc = await db.services.find_one(
-        {"id": service_id, "business_id": business_id, "is_active": True},
+def requested_service_ids(service_ids: list[str] | None, service_id: str | None = None) -> list[str]:
+    ids = []
+    seen = set()
+    for candidate in (service_ids or []) + ([service_id] if service_id else []):
+        if candidate and candidate not in seen:
+            ids.append(candidate)
+            seen.add(candidate)
+    return ids
+
+
+async def resolve_services_for_ticket(
+    business_id: str,
+    service_ids: list[str] | None = None,
+    service_id: str | None = None,
+) -> list[dict]:
+    """Fetch active services for this outlet in the same order requested."""
+    ids = requested_service_ids(service_ids, service_id)
+    if not ids:
+        return []
+    docs = await db.services.find(
+        {"id": {"$in": ids}, "business_id": business_id, "is_active": True},
         {"_id": 0},
-    )
-    if not svc:
-        raise HTTPException(status_code=400, detail="Selected service is unavailable")
-    return svc
+    ).to_list(len(ids))
+    by_id = {svc["id"]: svc for svc in docs}
+    services = [by_id[sid] for sid in ids if sid in by_id]
+    if len(services) != len(ids):
+        raise HTTPException(status_code=400, detail="One or more selected services are unavailable")
+    return services
+
+
+def ticket_service_fields(services: list[dict]) -> dict:
+    ids = [svc["id"] for svc in services]
+    names = [svc["name"] for svc in services]
+    duration = sum(int(svc.get("duration_minutes") or 0) for svc in services)
+    price = sum(float(svc.get("price", 0) or 0) for svc in services)
+    return {
+        "service_ids": ids,
+        "service_names": names,
+        "service_count": len(ids),
+        "service_id": ids[0] if len(ids) == 1 else None,
+        "service_name": ", ".join(names) if names else None,
+        "service_duration_minutes": duration or None,
+        "service_price": price,
+    }
 
 
 # ----------------- Brute-force protection -----------------
@@ -111,11 +144,15 @@ def public_ticket(t: dict) -> dict:
         "status": t["status"],
         "booking_type": t.get("booking_type", "remote"),
         "chair_number": t.get("chair_number"),
+        "service_ids": t.get("service_ids", []),
+        "service_names": t.get("service_names", []),
+        "service_count": int(t.get("service_count", 0) or 0),
         "service_id": t.get("service_id"),
         "service_name": t.get("service_name"),
         "service_duration_minutes": t.get("service_duration_minutes"),
         "service_price": float(t.get("service_price", 0) or 0),
         "paid": bool(t.get("paid", False)),
+        "payment_method": t.get("payment_method"),
         "paid_at": t.get("paid_at"),
         "created_at": t.get("created_at"),
         "served_at": t.get("served_at"),
@@ -201,6 +238,101 @@ async def estimate_wait_for_new_join(business: dict) -> int:
         return 0
     total_minutes = sum(_ticket_minutes(t) for t in waiting)
     return int(round(total_minutes / chairs))
+
+
+def utc_day_bounds(now: datetime | None = None) -> tuple[datetime, datetime]:
+    ref = now or datetime.now(timezone.utc)
+    start = ref.replace(hour=0, minute=0, second=0, microsecond=0)
+    return start, start + timedelta(days=1)
+
+
+async def issued_today_count(business_id: str, now: datetime | None = None) -> int:
+    start, end = utc_day_bounds(now)
+    return await db.queue.count_documents(
+        {
+            "business_id": business_id,
+            "created_at": {
+                "$gte": start.isoformat(),
+                "$lt": end.isoformat(),
+            },
+        }
+    )
+
+
+def _free_chair_number(business: dict, serving_tickets: list[dict]) -> int | None:
+    taken = {s.get("chair_number") for s in serving_tickets if s.get("chair_number")}
+    total_chairs = max(int(business.get("total_chairs", 1)), 1)
+    for i in range(1, total_chairs + 1):
+        if i not in taken:
+            return i
+    return None
+
+
+async def assign_waiting_ticket_to_chair(
+    business: dict,
+    *,
+    ticket_id: str | None = None,
+    prefer_next: bool = False,
+) -> dict:
+    """Promote a waiting ticket to serving while keeping chair assignment unique.
+
+    The unique partial index on `(business_id, chair_number)` for serving tickets
+    prevents duplicate live chair assignments even when two operators click at
+    almost the same time. We retry a few times if another request wins the race.
+    """
+    if not ticket_id and not prefer_next:
+        raise ValueError("assign_waiting_ticket_to_chair requires ticket_id or prefer_next")
+
+    business_id = business["id"]
+    for _ in range(5):
+        serving_tickets = await db.queue.find(
+            {"business_id": business_id, "status": "serving"},
+            {"_id": 0, "chair_number": 1},
+        ).to_list(1000)
+        chair = _free_chair_number(business, serving_tickets)
+        if chair is None:
+            raise HTTPException(status_code=400, detail="All stations are currently busy")
+
+        if ticket_id:
+            target = await db.queue.find_one(
+                {"id": ticket_id, "business_id": business_id},
+                {"_id": 0},
+            )
+            if not target:
+                raise HTTPException(status_code=404, detail="Ticket not found")
+            if target.get("status") != "waiting":
+                raise HTTPException(status_code=400, detail="Only waiting tickets can be started")
+            target_id = target["id"]
+        else:
+            target = await db.queue.find_one(
+                {"business_id": business_id, "status": "waiting"},
+                {"_id": 0},
+                sort=[("token_number", 1)],
+            )
+            if not target:
+                raise HTTPException(status_code=404, detail="No one in the waiting queue")
+            target_id = target["id"]
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        try:
+            updated = await db.queue.find_one_and_update(
+                {"id": target_id, "business_id": business_id, "status": "waiting"},
+                {
+                    "$set": {
+                        "status": "serving",
+                        "chair_number": chair,
+                        "served_at": target.get("served_at") or now_iso,
+                    }
+                },
+                projection={"_id": 0},
+                return_document=ReturnDocument.AFTER,
+            )
+        except DuplicateKeyError:
+            continue
+        if updated:
+            return updated
+
+    raise HTTPException(status_code=409, detail="Queue changed. Please try again.")
 
 
 # ----------------- Business lookups -----------------

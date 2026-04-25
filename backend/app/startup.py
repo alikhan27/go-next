@@ -2,6 +2,7 @@
 import os
 import uuid
 from datetime import datetime, timezone
+from pymongo import ASCENDING
 
 from .config import LOCKOUT_WINDOW_MINUTES
 from .db import db
@@ -27,6 +28,11 @@ async def ensure_indexes() -> None:
     await db.queue.create_index([("business_id", 1), ("status", 1)])
     await db.queue.create_index([("business_id", 1), ("token_number", -1)])
     await db.queue.create_index([("business_id", 1), ("finished_at", -1)])
+    await db.queue.create_index(
+        [("business_id", ASCENDING), ("chair_number", ASCENDING)],
+        unique=True,
+        partialFilterExpression={"status": "serving", "chair_number": {"$type": "number"}},
+    )
 
     await db.services.create_index([("business_id", 1), ("sort_order", 1)])
 

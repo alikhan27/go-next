@@ -74,7 +74,6 @@ async def register(body: RegisterRequest, response: Response):
     return {
         "user": {"id": user_id, "email": email, "name": body.owner_name, "role": "owner", "plan": "free"},
         "businesses": [public_business(business)],
-        "access_token": token,
     }
 
 
@@ -111,7 +110,6 @@ async def login(body: LoginRequest, request: Request, response: Response):
             "plan": user_plan(user),
         },
         "businesses": businesses,
-        "access_token": token,
     }
 
 

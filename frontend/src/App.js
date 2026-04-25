@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { Toaster } from "./components/ui/sonner";
-
+import { ThemeProvider } from "./context/ThemeContext";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -9,6 +9,7 @@ import Outlets from "./pages/Outlets";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import Analytics from "./pages/Analytics";
+import Collections from "./pages/Collections";
 import WhatsNew from "./pages/WhatsNew";
 import JoinQueue from "./pages/JoinQueue";
 import TicketStatus from "./pages/TicketStatus";
@@ -61,36 +62,39 @@ export default function App() {
   return (
     <div className="App">
       <BrowserRouter>
-        <AuthProvider>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/lock-account" element={<LockAccount />} />
+        <ThemeProvider>
+          <AuthProvider>
+            <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/lock-account" element={<LockAccount />} />
 
-            <Route path="/dashboard" element={<PostLoginRedirect />} />
-            <Route path="/dashboard/outlets" element={<Protected><Outlets /></Protected>} />
-            <Route path="/dashboard/whats-new" element={<Protected><WhatsNew /></Protected>} />
-            <Route path="/dashboard/:businessId" element={<Protected><Dashboard /></Protected>} />
-            <Route path="/dashboard/:businessId/settings" element={<Protected><Settings /></Protected>} />
-            <Route path="/dashboard/:businessId/analytics" element={<Protected><Analytics /></Protected>} />
-            <Route path="/dashboard/:businessId/onboarding" element={<Protected><Onboarding /></Protected>} />
-            <Route path="/dashboard/:businessId/qr-poster" element={<Protected><QrPoster /></Protected>} />
-            <Route path="/dashboard/:businessId/services" element={<Protected><Services /></Protected>} />
+              <Route path="/dashboard" element={<PostLoginRedirect />} />
+              <Route path="/dashboard/outlets" element={<Protected><Outlets /></Protected>} />
+              <Route path="/dashboard/whats-new" element={<Protected><WhatsNew /></Protected>} />
+              <Route path="/dashboard/:businessId" element={<Protected><Dashboard /></Protected>} />
+              <Route path="/dashboard/:businessId/settings" element={<Protected><Settings /></Protected>} />
+              <Route path="/dashboard/:businessId/analytics" element={<Protected><Analytics /></Protected>} />
+              <Route path="/dashboard/:businessId/collections" element={<Protected><Collections /></Protected>} />
+              <Route path="/dashboard/:businessId/onboarding" element={<Protected><Onboarding /></Protected>} />
+              <Route path="/dashboard/:businessId/qr-poster" element={<Protected><QrPoster /></Protected>} />
+              <Route path="/dashboard/:businessId/services" element={<Protected><Services /></Protected>} />
 
-            <Route path="/admin" element={<SuperAdminOnly><AdminPanel /></SuperAdminOnly>} />
+              <Route path="/admin" element={<SuperAdminOnly><AdminPanel /></SuperAdminOnly>} />
 
-            <Route path="/join/:businessId" element={<JoinQueue />} />
-            <Route path="/ticket/:ticketId" element={<TicketStatus />} />
-            <Route path="/display/:businessId" element={<Display />} />
+              <Route path="/join/:businessId" element={<JoinQueue />} />
+              <Route path="/ticket/:ticketId" element={<TicketStatus />} />
+              <Route path="/display/:businessId" element={<Display />} />
 
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          <Toaster richColors position="top-right" />
-        </AuthProvider>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+            <Toaster richColors position="top-right" />
+          </AuthProvider>
+        </ThemeProvider>
       </BrowserRouter>
-    </div>
+    </div >
   );
 }

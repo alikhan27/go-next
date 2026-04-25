@@ -36,12 +36,14 @@ def create_access_token(user_id: str, email: str) -> str:
 
 
 def set_auth_cookie(response: Response, token: str) -> None:
+    secure_cookie = os.environ.get("COOKIE_SECURE", "").lower() in {"1", "true", "yes", "on"}
+    same_site = os.environ.get("COOKIE_SAMESITE", "lax").lower()
     response.set_cookie(
         key="access_token",
         value=token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=secure_cookie,
+        samesite=same_site,
         max_age=ACCESS_TOKEN_TTL_DAYS * 24 * 60 * 60,
         path="/",
     )

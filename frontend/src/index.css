@@ -4,7 +4,7 @@
 
 body {
   margin: 0;
-  font-family: "Outfit", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-body, 'Outfit', system-ui, sans-serif);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: #F9F8F6;
@@ -12,7 +12,7 @@ body {
 }
 
 .font-serif-display {
-  font-family: "Cormorant Garamond", ui-serif, Georgia, serif;
+  font-family: var(--font-display, 'Cormorant Garamond', Georgia, serif);
   font-feature-settings: "liga", "dlig";
 }
 
@@ -42,16 +42,31 @@ body {
 }
 
 @layer base {
-  * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
-  h1, h2, h3, h4 { font-family: "Cormorant Garamond", ui-serif, Georgia, serif; letter-spacing: -0.01em; }
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display, 'Cormorant Garamond', Georgia, serif);
+    letter-spacing: -0.01em;
+  }
 }
 
-.heading-serif { font-family: "Cormorant Garamond", ui-serif, Georgia, serif; }
+.heading-serif {
+  font-family: "Cormorant Garamond", ui-serif, Georgia, serif;
+}
 
 .grain {
   position: relative;
 }
+
 .grain::after {
   content: "";
   position: absolute;
@@ -64,26 +79,166 @@ body {
 
 .warm-hero-gradient {
   background:
-    radial-gradient(1200px 600px at 85% -10%, rgba(196,124,92,0.25), transparent 60%),
-    radial-gradient(900px 500px at -10% 110%, rgba(125,146,118,0.22), transparent 60%),
+    radial-gradient(1200px 600px at 85% -10%, rgba(196, 124, 92, 0.25), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(125, 146, 118, 0.22), transparent 60%),
     linear-gradient(180deg, #F9F8F6 0%, #F4EFE8 100%);
 }
 
-.stagger-in > * {
+.stagger-in>* {
   opacity: 0;
   transform: translateY(8px);
   animation: rise 600ms ease forwards;
 }
-.stagger-in > *:nth-child(1) { animation-delay: 60ms; }
-.stagger-in > *:nth-child(2) { animation-delay: 140ms; }
-.stagger-in > *:nth-child(3) { animation-delay: 220ms; }
-.stagger-in > *:nth-child(4) { animation-delay: 300ms; }
-.stagger-in > *:nth-child(5) { animation-delay: 380ms; }
-.stagger-in > *:nth-child(6) { animation-delay: 460ms; }
 
-@keyframes rise {
-  to { opacity: 1; transform: translateY(0); }
+.stagger-in>*:nth-child(1) {
+  animation-delay: 60ms;
 }
 
-.press:active { transform: scale(0.97); }
-.press { transition: transform 120ms ease, background-color 120ms ease, box-shadow 200ms ease; }
+.stagger-in>*:nth-child(2) {
+  animation-delay: 140ms;
+}
+
+.stagger-in>*:nth-child(3) {
+  animation-delay: 220ms;
+}
+
+.stagger-in>*:nth-child(4) {
+  animation-delay: 300ms;
+}
+
+.stagger-in>*:nth-child(5) {
+  animation-delay: 380ms;
+}
+
+.stagger-in>*:nth-child(6) {
+  animation-delay: 460ms;
+}
+
+@keyframes rise {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.press:active {
+  transform: scale(0.97);
+}
+
+.press {
+  transition: transform 120ms ease, background-color 120ms ease, box-shadow 200ms ease;
+}
+
+/* ─── Theme overrides ────────────────────────────────────────────────────────
+   Remaps the hardcoded #hex colors the app uses to CSS variables.
+   Each data-theme="X" block overrides only what differs from warm-sand.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Shared: make bg/text/border respond to CSS vars everywhere */
+[data-theme] body,
+[data-theme] .min-h-screen {
+  background-color: var(--app-bg) !important;
+  color: var(--app-text) !important;
+}
+
+/* Surface cards */
+[data-theme] .bg-white,
+[data-theme] .bg-white\/80 {
+  background-color: var(--app-surface) !important;
+}
+
+/* Borders */
+[data-theme] .border-stone-200,
+[data-theme] .border-stone-300 {
+  border-color: var(--app-border) !important;
+}
+
+/* Accent color (terracotta / indigo / sky etc.) */
+[data-theme] .text-\[\#A86246\],
+[data-theme] .text-\[\#C47C5C\] {
+  color: var(--app-accent-text) !important;
+}
+
+[data-theme] .bg-\[\#C47C5C\] {
+  background-color: var(--app-accent) !important;
+}
+
+[data-theme] .border-\[\#C47C5C\] {
+  border-color: var(--app-accent) !important;
+}
+
+/* Primary button / bg */
+[data-theme] .bg-\[\#2C302E\],
+[data-theme] .hover\:bg-\[\#1d201f\]:hover {
+  background-color: var(--app-text) !important;
+}
+
+[data-theme] .text-\[\#2C302E\] {
+  color: var(--app-text) !important;
+}
+
+/* Success / moss green */
+[data-theme] .text-\[\#4c6547\],
+[data-theme] .text-\[\#7D9276\] {
+  color: var(--app-success) !important;
+}
+
+[data-theme] .bg-\[\#7D9276\] {
+  background-color: var(--app-success) !important;
+}
+
+/* Warm hero gradient — remap for each theme */
+[data-theme="midnight"] .warm-hero-gradient {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(129, 140, 248, 0.2), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(110, 231, 183, 0.15), transparent 60%),
+    linear-gradient(180deg, #0F1117 0%, #1A1D27 100%) !important;
+}
+
+[data-theme="ocean"] .warm-hero-gradient {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(14, 165, 233, 0.2), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(20, 184, 166, 0.18), transparent 60%),
+    linear-gradient(180deg, #F0F9FF 0%, #E0F2FE 100%) !important;
+}
+
+[data-theme="forest"] .warm-hero-gradient {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(217, 119, 6, 0.2), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(76, 101, 71, 0.2), transparent 60%),
+    linear-gradient(180deg, #F2F5F0 0%, #E8EEE5 100%) !important;
+}
+
+[data-theme="rose"] .warm-hero-gradient {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(244, 63, 94, 0.2), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(192, 132, 252, 0.18), transparent 60%),
+    linear-gradient(180deg, #FFF1F2 0%, #FFE4E6 100%) !important;
+}
+
+/* App bg for non-.min-h-screen pages */
+[data-theme="midnight"] .bg-\[\#F9F8F6\] {
+  background-color: #0F1117 !important;
+}
+
+[data-theme="ocean"] .bg-\[\#F9F8F6\] {
+  background-color: #F0F9FF !important;
+}
+
+[data-theme="forest"] .bg-\[\#F9F8F6\] {
+  background-color: #F2F5F0 !important;
+}
+
+[data-theme="rose"] .bg-\[\#F9F8F6\] {
+  background-color: #FFF1F2 !important;
+}
+
+/* Dark mode text colors for midnight */
+[data-theme="midnight"] .text-stone-600,
+[data-theme="midnight"] .text-stone-500 {
+  color: #8B8FA8 !important;
+}
+
+[data-theme="midnight"] .text-stone-700 {
+  color: #A0A4BB !important;
+}

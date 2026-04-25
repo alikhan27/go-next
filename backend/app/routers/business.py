@@ -69,4 +69,5 @@ async def delete_outlet(business_id: str, user: dict = Depends(get_current_user)
     await owned_business_or_404(user["id"], business_id)
     await db.businesses.delete_one({"id": business_id})
     await db.queue.delete_many({"business_id": business_id})
+    await db.services.delete_many({"business_id": business_id})
     return {"ok": True}

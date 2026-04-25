@@ -7,14 +7,16 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..db import db
-from ..models import MarkPaidRequest, UpdateStatusRequest, WalkInRequest
+from ..models import CompleteTicketRequest, MarkPaidRequest, UpdateStatusRequest, WalkInRequest
 from ..security import get_current_user
 from ..services import (
+    assign_waiting_ticket_to_chair,
     next_token_number,
     owned_business_or_404,
     plan_limits,
     public_ticket,
-    resolve_service_for_ticket,
+    resolve_services_for_ticket,
+    ticket_service_fields,
 )
 
 router = APIRouter(prefix="/business/{business_id}")
@@ -45,7 +47,11 @@ async def add_walk_in(
     user: dict = Depends(get_current_user),
 ):
     business = await owned_business_or_404(user["id"], business_id)
-    service = await resolve_service_for_ticket(business_id, body.service_id)
+    services = await resolve_services_for_ticket(
+        business_id,
+        service_ids=body.service_ids,
+        service_id=body.service_id,
+    )
     token_number = await next_token_number(business["id"])
     ticket_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -58,14 +64,11 @@ async def add_walk_in(
         "status": "waiting",
         "booking_type": "walk-in",
         "chair_number": None,
-        "service_id": service["id"] if service else None,
-        "service_name": service["name"] if service else None,
-        "service_duration_minutes": int(service["duration_minutes"]) if service else None,
-        "service_price": float(service.get("price", 0) or 0) if service else 0,
         "created_at": now,
         "served_at": None,
         "finished_at": None,
     }
+    ticket.update(ticket_service_fields(services))
     await db.queue.insert_one(ticket)
     return public_ticket(ticket)
 
@@ -87,19 +90,8 @@ async def update_ticket_status(
     if body.status in ("completed", "cancelled", "no_show"):
         updates["finished_at"] = now_iso
     if body.status == "serving":
-        if not t.get("served_at"):
-            updates["served_at"] = now_iso
-        if t.get("chair_number") is None:
-            serving_tickets = await db.queue.find(
-                {"business_id": business["id"], "status": "serving"},
-                {"_id": 0, "chair_number": 1},
-            ).to_list(1000)
-            taken = {s.get("chair_number") for s in serving_tickets if s.get("chair_number")}
-            total_chairs = business.get("total_chairs", 1)
-            for i in range(1, total_chairs + 1):
-                if i not in taken:
-                    updates["chair_number"] = i
-                    break
+        updated = await assign_waiting_ticket_to_chair(business, ticket_id=ticket_id)
+        return public_ticket(updated)
     await db.queue.update_one({"id": ticket_id}, {"$set": updates})
     updated = await db.queue.find_one({"id": ticket_id}, {"_id": 0})
     return public_ticket(updated)
@@ -116,8 +108,48 @@ async def mark_paid(
     t = await db.queue.find_one({"id": ticket_id, "business_id": business["id"]}, {"_id": 0})
     if not t:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    if body.paid and not body.payment_method:
+        raise HTTPException(status_code=400, detail="Choose cash or online before marking as paid")
     updates: dict = {"paid": bool(body.paid)}
     updates["paid_at"] = datetime.now(timezone.utc).isoformat() if body.paid else None
+    updates["payment_method"] = body.payment_method if body.paid else None
+    await db.queue.update_one({"id": ticket_id}, {"$set": updates})
+    updated = await db.queue.find_one({"id": ticket_id}, {"_id": 0})
+    return public_ticket(updated)
+
+
+@router.post("/queue/{ticket_id}/complete")
+async def complete_ticket(
+    business_id: str,
+    ticket_id: str,
+    body: CompleteTicketRequest,
+    user: dict = Depends(get_current_user),
+):
+    business = await owned_business_or_404(user["id"], business_id)
+    t = await db.queue.find_one({"id": ticket_id, "business_id": business["id"]}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if t.get("status") != "serving":
+        raise HTTPException(status_code=400, detail="Only serving tickets can be completed")
+    if not body.paid:
+        raise HTTPException(status_code=400, detail="Mark payment received before completing")
+    if not body.payment_method:
+        raise HTTPException(status_code=400, detail="Choose cash or online before completing")
+
+    services = await resolve_services_for_ticket(
+        business_id,
+        service_ids=body.service_ids,
+    )
+    now_iso = datetime.now(timezone.utc).isoformat()
+    updates = {
+        "status": "completed",
+        "finished_at": now_iso,
+        "paid": True,
+        "payment_method": body.payment_method,
+        "paid_at": now_iso,
+        "service_price": float(body.final_amount or 0),
+    }
+    updates.update(ticket_service_fields(services))
     await db.queue.update_one({"id": ticket_id}, {"$set": updates})
     updated = await db.queue.find_one({"id": ticket_id}, {"_id": 0})
     return public_ticket(updated)
@@ -149,33 +181,7 @@ async def recent_completed(business_id: str, user: dict = Depends(get_current_us
 @router.post("/queue/call-next")
 async def call_next(business_id: str, user: dict = Depends(get_current_user)):
     business = await owned_business_or_404(user["id"], business_id)
-    next_ticket = await db.queue.find_one(
-        {"business_id": business["id"], "status": "waiting"},
-        {"_id": 0},
-        sort=[("token_number", 1)],
-    )
-    if not next_ticket:
-        raise HTTPException(status_code=404, detail="No one in the waiting queue")
-
-    serving_tickets = await db.queue.find(
-        {"business_id": business["id"], "status": "serving"}, {"_id": 0, "chair_number": 1}
-    ).to_list(1000)
-    taken = {s.get("chair_number") for s in serving_tickets if s.get("chair_number")}
-    total_chairs = business.get("total_chairs", 1)
-    chair = None
-    for i in range(1, total_chairs + 1):
-        if i not in taken:
-            chair = i
-            break
-    if chair is None:
-        raise HTTPException(status_code=400, detail="All stations are currently busy")
-
-    now_iso = datetime.now(timezone.utc).isoformat()
-    await db.queue.update_one(
-        {"id": next_ticket["id"]},
-        {"$set": {"status": "serving", "chair_number": chair, "served_at": now_iso}},
-    )
-    updated = await db.queue.find_one({"id": next_ticket["id"]}, {"_id": 0})
+    updated = await assign_waiting_ticket_to_chair(business, prefer_next=True)
     return public_ticket(updated)
 
 
@@ -321,4 +327,103 @@ async def analytics(
         },
         "series": series,
         "heatmap": heatmap_out,
+    }
+
+
+@router.get("/collections")
+async def collections(
+    business_id: str,
+    days: int = 7,
+    paid: str = "all",
+    payment_method: str = "all",
+    service_id: str = "all",
+    user: dict = Depends(get_current_user),
+):
+    await owned_business_or_404(user["id"], business_id)
+    plan_max = plan_limits(user)["analytics_days"]
+    days = max(1, min(days, plan_max))
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    query: dict = {
+        "business_id": business_id,
+        "status": "completed",
+        "finished_at": {"$gte": since},
+    }
+    if paid == "paid":
+        query["paid"] = True
+    elif paid == "unpaid":
+        query["paid"] = False
+    if payment_method != "all":
+        query["payment_method"] = payment_method
+    if service_id != "all":
+        query["service_ids"] = service_id
+
+    rows = await db.queue.find(query, {"_id": 0}).sort("finished_at", -1).to_list(5000)
+
+    total_amount = 0.0
+    paid_amount = 0.0
+    unpaid_amount = 0.0
+    paid_count = 0
+    unpaid_count = 0
+    per_day = defaultdict(lambda: {"amount": 0.0, "tickets": 0, "paid": 0.0, "unpaid": 0.0})
+    out_rows = []
+
+    for row in rows:
+        finished = row.get("finished_at")
+        if not finished:
+            continue
+        try:
+            fdt = datetime.fromisoformat(finished.replace("Z", "+00:00"))
+        except Exception:
+            continue
+        amount = float(row.get("service_price") or 0)
+        is_paid = bool(row.get("paid"))
+        day = fdt.date().isoformat()
+
+        total_amount += amount
+        per_day[day]["amount"] += amount
+        per_day[day]["tickets"] += 1
+        if is_paid:
+            paid_amount += amount
+            paid_count += 1
+            per_day[day]["paid"] += amount
+        else:
+            unpaid_amount += amount
+            unpaid_count += 1
+            per_day[day]["unpaid"] += amount
+
+        out_rows.append({
+            **public_ticket(row),
+            "finished_date": day,
+        })
+
+    today = datetime.now(timezone.utc).date()
+    series = []
+    for offset in range(days - 1, -1, -1):
+        day = (today - timedelta(days=offset)).isoformat()
+        series.append({
+            "date": day,
+            "amount": round(per_day[day]["amount"], 2),
+            "tickets": per_day[day]["tickets"],
+            "paid": round(per_day[day]["paid"], 2),
+            "unpaid": round(per_day[day]["unpaid"], 2),
+        })
+
+    return {
+        "range_days": days,
+        "filters": {
+            "paid": paid,
+            "payment_method": payment_method,
+            "service_id": service_id,
+        },
+        "totals": {
+            "amount": round(total_amount, 2),
+            "paid_amount": round(paid_amount, 2),
+            "unpaid_amount": round(unpaid_amount, 2),
+            "ticket_count": len(out_rows),
+            "paid_count": paid_count,
+            "unpaid_count": unpaid_count,
+        },
+        "series": series,
+        "rows": out_rows,
     }

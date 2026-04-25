@@ -64,15 +64,18 @@ class JoinQueueRequest(BaseModel):
     customer_name: str = Field(min_length=1, max_length=80)
     customer_phone: str = Field(min_length=6, max_length=20)
     service_id: Optional[str] = None
+    service_ids: list[str] = Field(default_factory=list)
 
 
 class WalkInRequest(BaseModel):
     customer_name: str = Field(min_length=1, max_length=80)
     customer_phone: str = ""
     service_id: Optional[str] = None
+    service_ids: list[str] = Field(default_factory=list)
 
 
 StatusT = Literal["waiting", "serving", "completed", "cancelled", "no_show"]
+PaymentMethodT = Literal["cash", "online"]
 
 
 class UpdateStatusRequest(BaseModel):
@@ -81,6 +84,14 @@ class UpdateStatusRequest(BaseModel):
 
 class MarkPaidRequest(BaseModel):
     paid: bool
+    payment_method: Optional[PaymentMethodT] = None
+
+
+class CompleteTicketRequest(BaseModel):
+    service_ids: list[str] = Field(default_factory=list)
+    final_amount: float = Field(ge=0, le=1_000_000)
+    paid: bool = True
+    payment_method: PaymentMethodT
 
 
 # ---- Services (premium+) ----

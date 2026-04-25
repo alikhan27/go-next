@@ -7,12 +7,15 @@ from fastapi import APIRouter, HTTPException
 from ..db import db
 from ..models import JoinQueueRequest
 from ..services import (
+    issued_today_count,
     estimate_wait_for_new_join,
     estimate_wait_for_ticket,
     next_token_number,
     public_business,
     public_ticket,
-    resolve_service_for_ticket,
+    resolve_services_for_ticket,
+    requested_service_ids,
+    ticket_service_fields,
 )
 
 router = APIRouter(prefix="/public")
@@ -51,22 +54,15 @@ async def public_join(business_id: str, body: JoinQueueRequest):
     if not b.get("is_online", True):
         raise HTTPException(status_code=400, detail="This business is currently offline")
 
-    today_waiting = await db.queue.count_documents(
-        {"business_id": business_id, "status": {"$in": ["waiting", "serving"]}}
-    )
-    if today_waiting >= int(b.get("token_limit", 100)):
+    tickets_issued_today = await issued_today_count(business_id)
+    if tickets_issued_today >= int(b.get("token_limit", 100)):
         raise HTTPException(status_code=400, detail="Queue limit reached. Please try later.")
 
-    service = await resolve_service_for_ticket(business_id, body.service_id)
-
-    # If the outlet has any active services published, force the customer
-    # to pick one — keeps ETA math meaningful and avoids blank tickets.
-    if not service:
-        active_count = await db.services.count_documents(
-            {"business_id": business_id, "is_active": True}
-        )
-        if active_count > 0:
-            raise HTTPException(status_code=400, detail="Please choose a service to continue")
+    services = await resolve_services_for_ticket(
+        business_id,
+        service_ids=body.service_ids,
+        service_id=body.service_id,
+    )
 
     token_number = await next_token_number(business_id)
     ticket_id = str(uuid.uuid4())
@@ -80,14 +76,11 @@ async def public_join(business_id: str, body: JoinQueueRequest):
         "status": "waiting",
         "booking_type": "remote",
         "chair_number": None,
-        "service_id": service["id"] if service else None,
-        "service_name": service["name"] if service else None,
-        "service_duration_minutes": int(service["duration_minutes"]) if service else None,
-        "service_price": float(service.get("price", 0) or 0) if service else 0,
         "created_at": now,
         "served_at": None,
         "finished_at": None,
     }
+    ticket.update(ticket_service_fields(services))
     await db.queue.insert_one(ticket)
     return public_ticket(ticket)
 

@@ -32,7 +32,7 @@ def owner_session():
     r = s.post(f"{API}/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}, timeout=15)
     assert r.status_code == 200, f"Login failed: {r.status_code} {r.text}"
     data = r.json()
-    assert data.get("access_token")
+    assert "access_token" not in data
     assert "access_token" in s.cookies
     # Premium plan now caps at 3 outlets; admin is seeded with 2 demo-* outlets.
     # Purge any leftover TEST_* outlets from prior runs so create-outlet tests have headroom.
@@ -91,7 +91,7 @@ class TestAuth:
         ids = [b["id"] for b in data["businesses"]]
         assert DEMO_ID_1 in ids
         assert DEMO_ID_2 in ids
-        assert data.get("access_token")
+        assert "access_token" not in data
         assert "access_token" in s.cookies
 
     def test_login_invalid_credentials(self):
@@ -224,6 +224,44 @@ class TestPublic:
         s = requests.Session()
         r = s.get(f"{API}/public/business/{DEMO_ID_1}/display")
         assert r.status_code == 200
+
+    def test_public_join_daily_token_limit_counts_issued_today_not_only_live_queue(self, owner_session):
+        s, _ = owner_session
+        outlet_name = f"TEST_DailyLimit_{uuid.uuid4().hex[:6]}"
+        created = s.post(f"{API}/business", json={
+            "business_name": outlet_name,
+            "business_type": "salon",
+            "state": "Maharashtra",
+            "pincode": "400001",
+        })
+        assert created.status_code == 200, created.text
+        bid = created.json()["id"]
+        try:
+            r = s.patch(f"{API}/business/{bid}", json={"token_limit": 2, "total_chairs": 2})
+            assert r.status_code == 200, r.text
+
+            for idx in range(2):
+                walk = s.post(
+                    f"{API}/business/{bid}/queue/walk-in",
+                    json={"customer_name": f"TEST_Daily_{idx}", "customer_phone": "555"},
+                )
+                assert walk.status_code == 200, walk.text
+                call = s.post(f"{API}/business/{bid}/queue/call-next")
+                assert call.status_code == 200, call.text
+                done = s.patch(
+                    f"{API}/business/{bid}/queue/{call.json()['id']}/status",
+                    json={"status": "completed"},
+                )
+                assert done.status_code == 200, done.text
+
+            blocked = requests.post(
+                f"{API}/public/business/{bid}/join",
+                json={"customer_name": "Blocked Guest", "customer_phone": "9990001111"},
+            )
+            assert blocked.status_code == 400, blocked.text
+            assert "Queue limit reached" in blocked.json().get("detail", "")
+        finally:
+            s.delete(f"{API}/business/{bid}")
 
 
 # ------------- Auth gate on business endpoints -------------
@@ -862,7 +900,7 @@ class TestServicesCRUD:
         assert isinstance(r.json(), list)
 
 
-# ------------- Public Join with service_id validation -------------
+# ------------- Public Join with service selection validation -------------
 class TestJoinWithService:
     def test_join_requires_service_when_outlet_has_active(self, owner_session):
         s, _ = owner_session
@@ -876,27 +914,29 @@ class TestJoinWithService:
                      json={"name": "Beard Trim", "duration_minutes": 20}).json()
         sid = svc["id"]
 
-        # join without service_id -> 400
+        # join without any selected service -> 400
         r = requests.post(f"{API}/public/business/{bid}/join",
                           json={"customer_name": "TEST_NoSvc", "customer_phone": "9990001234"})
         assert r.status_code == 400
         assert "service" in r.json().get("detail", "").lower()
 
-        # join with service_id from another outlet -> 400
+        # join with unknown service id -> 400
         r = requests.post(f"{API}/public/business/{bid}/join",
                           json={"customer_name": "TEST_Bad", "customer_phone": "9990001234",
                                 "service_id": "non-existent-id"})
         assert r.status_code == 400
         assert "unavailable" in r.json().get("detail", "").lower()
 
-        # valid service_id -> 200, denormalised fields present
+        # valid legacy single service_id -> 200, denormalised fields present
         r = requests.post(f"{API}/public/business/{bid}/join",
                           json={"customer_name": "TEST_Good", "customer_phone": "9990001234",
                                 "service_id": sid})
         assert r.status_code == 200, r.text
         t = r.json()
         assert t["service_id"] == sid
+        assert t["service_ids"] == [sid]
         assert t["service_name"] == "Beard Trim"
+        assert t["service_names"] == ["Beard Trim"]
         assert t["service_duration_minutes"] == 20
 
         # deactivate service -> using sid should now 400
@@ -907,6 +947,35 @@ class TestJoinWithService:
         assert r.status_code == 400
 
         # cleanup
+        s.delete(f"{API}/business/{bid}")
+
+    def test_join_with_multiple_services_aggregates_fields(self, owner_session):
+        s, _ = owner_session
+        bid = s.post(f"{API}/business", json={
+            "business_name": f"TEST_MultiSvc_{uuid.uuid4().hex[:5]}",
+            "business_type": "salon",
+            "state": "Maharashtra", "pincode": "400001",
+        }).json()["id"]
+        svc1 = s.post(f"{API}/business/{bid}/services",
+                      json={"name": "Haircut", "duration_minutes": 30, "price": 500}).json()
+        svc2 = s.post(f"{API}/business/{bid}/services",
+                      json={"name": "Shave", "duration_minutes": 15, "price": 200}).json()
+
+        r = requests.post(f"{API}/public/business/{bid}/join", json={
+            "customer_name": "TEST_Multi",
+            "customer_phone": "9990001234",
+            "service_ids": [svc1["id"], svc2["id"]],
+        })
+        assert r.status_code == 200, r.text
+        t = r.json()
+        assert t["service_ids"] == [svc1["id"], svc2["id"]]
+        assert t["service_names"] == ["Haircut", "Shave"]
+        assert t["service_count"] == 2
+        assert t["service_id"] is None
+        assert t["service_name"] == "Haircut, Shave"
+        assert t["service_duration_minutes"] == 45
+        assert t["service_price"] == 700
+
         s.delete(f"{API}/business/{bid}")
 
     def test_join_no_service_required_when_outlet_has_none(self):
@@ -983,6 +1052,7 @@ class TestWalkInWithService:
         assert r.status_code == 200, r.text
         t = r.json()
         assert t["service_id"] == sid
+        assert t["service_ids"] == [sid]
         assert t["service_name"] == "Spa"
         assert t["service_duration_minutes"] == 25
         s.delete(f"{API}/business/{bid}")

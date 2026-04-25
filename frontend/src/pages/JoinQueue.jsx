@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
-import { MapPin, Users, Clock, Sparkles } from "lucide-react";
+import { Check, MapPin, Users, Clock, Sparkles } from "lucide-react";
 
 export default function JoinQueue() {
   const { businessId } = useParams();
@@ -13,7 +13,7 @@ export default function JoinQueue() {
   const [summary, setSummary] = useState(null);
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ customer_name: "", customer_phone: "", service_id: "" });
+  const [form, setForm] = useState({ customer_name: "", customer_phone: "", service_ids: [] });
   const [submitting, setSubmitting] = useState(false);
   const [notFound, setNotFound] = useState(false);
 
@@ -63,21 +63,15 @@ export default function JoinQueue() {
     };
   }, [businessId, navigate]);
 
-  const requiresService = services.length > 0;
-
   const submit = async (e) => {
     e.preventDefault();
-    if (requiresService && !form.service_id) {
-      toast.error("Please pick a service to continue");
-      return;
-    }
     setSubmitting(true);
     try {
       const payload = {
         customer_name: form.customer_name,
         customer_phone: form.customer_phone,
       };
-      if (form.service_id) payload.service_id = form.service_id;
+      if (form.service_ids.length > 0) payload.service_ids = form.service_ids;
       const { data } = await api.post(`/public/business/${businessId}/join`, payload);
       localStorage.setItem(`ticket-${businessId}`, data.id);
       toast.success("You're in the queue");
@@ -105,7 +99,21 @@ export default function JoinQueue() {
   }
 
   const { business, waiting_count, serving_count, total_chairs, estimated_wait_minutes } = summary;
-  const selectedService = services.find((s) => s.id === form.service_id);
+  const selectedServices = services.filter((s) => form.service_ids.includes(s.id));
+  const selectedDuration = selectedServices.reduce((sum, s) => sum + Number(s.duration_minutes || 0), 0);
+  const selectedPrice = selectedServices.reduce((sum, s) => sum + Number(s.price || 0), 0);
+
+  const toggleService = (serviceId) => {
+    setForm((prev) => {
+      const active = prev.service_ids.includes(serviceId);
+      return {
+        ...prev,
+        service_ids: active
+          ? prev.service_ids.filter((id) => id !== serviceId)
+          : [...prev.service_ids, serviceId],
+      };
+    });
+  };
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] text-[#2C302E]">
@@ -156,17 +164,17 @@ export default function JoinQueue() {
               <div data-testid="join-services">
                 <Label className="flex items-center gap-1.5">
                   <Sparkles className="h-3.5 w-3.5 text-[#C47C5C]" />
-                  Pick a service
+                  Pick services
                 </Label>
-                <p className="mt-1 text-xs text-stone-500">We&apos;ll use this to estimate your wait.</p>
+                <p className="mt-1 text-xs text-stone-500">Optional. Choose any that apply and we&apos;ll add up the time to estimate your wait.</p>
                 <div className="mt-3 grid gap-2">
                   {services.map((s) => {
-                    const active = form.service_id === s.id;
+                    const active = form.service_ids.includes(s.id);
                     return (
                       <button
                         type="button"
                         key={s.id}
-                        onClick={() => setForm({ ...form, service_id: s.id })}
+                        onClick={() => toggleService(s.id)}
                         className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
                           active
                             ? "border-[#C47C5C] bg-[#F4EFE8] text-[#A86246]"
@@ -174,7 +182,16 @@ export default function JoinQueue() {
                         }`}
                         data-testid={`join-service-${s.id}`}
                       >
-                        <span className="font-medium">{s.name}</span>
+                        <span className="flex items-center gap-3 min-w-0">
+                          <span className={`flex h-5 w-5 items-center justify-center rounded-md border ${
+                            active
+                              ? "border-[#C47C5C] bg-[#C47C5C] text-white"
+                              : "border-stone-300 text-transparent"
+                          }`}>
+                            <Check className="h-3.5 w-3.5" />
+                          </span>
+                          <span className="font-medium truncate">{s.name}</span>
+                        </span>
                         <span className={`flex items-center gap-3 text-xs ${active ? "text-[#A86246]" : "text-stone-500"}`}>
                           <span>~ {s.duration_minutes} min</span>
                           {s.price > 0 && (
@@ -187,6 +204,19 @@ export default function JoinQueue() {
                     );
                   })}
                 </div>
+                {selectedServices.length > 0 && (
+                  <div className="mt-3 rounded-xl bg-[#F4EFE8] px-4 py-3 text-sm text-[#7A4C38]" data-testid="join-services-summary">
+                    <span className="font-medium">
+                      {selectedServices.length === 1
+                        ? selectedServices[0].name
+                        : `${selectedServices.length} services selected`}
+                    </span>
+                    <span className="ml-2 text-xs">
+                      {selectedDuration > 0 && `~ ${selectedDuration} min`}
+                      {selectedPrice > 0 && ` · ₹${selectedPrice.toLocaleString("en-IN")}`}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -204,13 +234,13 @@ export default function JoinQueue() {
                 onChange={(e) => setForm({ ...form, customer_phone: e.target.value })}
                 data-testid="join-phone" />
             </div>
-            <Button type="submit" disabled={submitting || (requiresService && !form.service_id)}
+            <Button type="submit" disabled={submitting}
               className="w-full h-12 rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white press disabled:opacity-50"
               data-testid="join-submit">
               {submitting
                 ? "Getting your token…"
-                : selectedService
-                  ? `Get my token · ${selectedService.name}`
+                : selectedServices.length > 0
+                  ? `Get my token · ${selectedServices.length === 1 ? selectedServices[0].name : `${selectedServices.length} services`}`
                   : "Get my token"}
             </Button>
             <p className="text-[11px] text-stone-500 flex items-center gap-1.5 justify-center">
