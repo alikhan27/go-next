@@ -3,7 +3,7 @@
 > One place to understand how the Salon Queue app works end-to-end — for you, future agents, and anyone joining the project.
 > Updated on every feature / bug-fix iteration.
 
-**Last updated**: 2026-02 — iteration 10 (backend modular refactor + customer QR poster + owner onboarding wizard)
+**Last updated**: 2026-02 — iteration 11 (3 plan tiers + outlet services + service-aware ETA)
 
 ---
 

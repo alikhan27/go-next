@@ -47,11 +47,17 @@ Rebuilt from Next.js+Supabase onto React + FastAPI + MongoDB with a calm, organi
 - **Brute-force lockout** on `/api/auth/login` (5 fails / 15 min / email, TTL index auto-expires).
 - **Forgot-password** + **"Wasn't you?" account freeze** flow (preview mode returns links in API response).
 
-### v4 — 2026-02 (current)
-- **Backend modular refactor** — monolithic `server.py` (1285 lines) split into: `app/config.py`, `app/db.py`, `app/security.py`, `app/models.py`, `app/services.py`, `app/startup.py`, and six routers under `app/routers/`. Zero behavior change — verified by 42/42 pytest backend regression suite.
-- **Customer QR poster** `/dashboard/:businessId/qr-poster` — printable A4 poster with outlet branding, large QR, "Scan to join the queue" tagline. Accessible from the Dashboard via "Print poster for reception".
-- **Owner onboarding wizard** `/dashboard/:businessId/onboarding` — 4-step guided setup (welcome → stations → QR → TV). First-time owners are redirected here from `/register` with their newly-created outlet. Completion remembered in `localStorage` under `gonext:onboarded:{userId}`.
-- Verified: 42/42 pytest backend pass, all UI flows pass (testing agent iter 4).
+### v4 — 2026-02
+- **Backend modular refactor** — monolithic `server.py` split into routers + shared core (`app/config.py`, `db.py`, `security.py`, `models.py`, `services.py`, `startup.py` + 6 routers). Zero behavior change.
+- **Customer QR poster** `/dashboard/:id/qr-poster` — printable A4 poster.
+- **Owner onboarding wizard** `/dashboard/:id/onboarding` — 4-step guided setup.
+
+### v5 — 2026-02 (current)
+- **Three plan tiers**: Free (1 outlet / 3 chairs / 50 tokens / no services), Premium (3 outlets / 10 chairs / 200 tokens / services), Premium Plus (25 outlets / 10 chairs / 500 tokens / services / 180-day analytics). Plan helper at `/app/frontend/src/lib/plans.js`.
+- **Outlet services** (Premium+): owners list/create/update/toggle/delete services with name + duration in minutes via `/dashboard/:id/services`. Stored in `services` collection. Customer join page renders an interactive service picker; if the outlet has any active services, picking one is required.
+- **Service-aware ETA**: tickets snapshot `service_id`/`service_name`/`service_duration_minutes` at join. `queue-summary` and `ticket-status` compute `estimated_wait_minutes` from sums of waiting durations / chairs (15min fallback when ticket has no service).
+- **Login no longer advertises super admin** demo creds. The seed for `super@go-next.in` still runs server-side for the platform owner.
+- Verified: 55/55 backend pytest pass, all UI flows pass (testing agent iter 5).
 
 ## Backlog (P1)
 - WhatsApp/SMS "your turn" notifications via Twilio.
