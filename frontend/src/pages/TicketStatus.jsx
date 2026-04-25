@@ -137,6 +137,21 @@ export default function TicketStatus() {
             </div>
           )}
 
+          {(ticket.service_name || ticket.service_price > 0) && (
+            <div className="mt-4 rounded-2xl border border-stone-200 px-4 py-3 flex items-center justify-between" data-testid="ticket-service-row">
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Service</p>
+                <p className="font-medium truncate">{ticket.service_name || "—"}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Total</p>
+                <p className="font-serif-display text-2xl text-[#A86246]" data-testid="ticket-total">
+                  {ticket.service_price > 0 ? `₹${Number(ticket.service_price).toLocaleString("en-IN")}` : "—"}
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="mt-6 text-center text-xs text-stone-500 inline-flex w-full items-center justify-center gap-1.5">
             <Clock className="h-3 w-3" /> Live status updates every few seconds.
           </div>

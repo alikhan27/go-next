@@ -40,7 +40,7 @@ export default function Dashboard() {
   const businesses = auth?.businesses || [];
   const business = businesses.find((b) => b.id === businessId);
   const [tickets, setTickets] = useState([]);
-  const [stats, setStats] = useState({ waiting: 0, serving: 0, completed_today: 0, no_show_today: 0 });
+  const [stats, setStats] = useState({ waiting: 0, serving: 0, completed_today: 0, no_show_today: 0, revenue_today: 0 });
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [walkIn, setWalkIn] = useState({ customer_name: "", customer_phone: "" });
   const [isOnline, setIsOnline] = useState(business?.is_online ?? true);
@@ -165,11 +165,12 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <StatCard label="Waiting" value={stats.waiting} accent="text-[#A86246]" testid="stat-waiting" />
           <StatCard label="Serving" value={stats.serving} accent="text-[#4c6547]" testid="stat-serving" />
           <StatCard label="Done today" value={stats.completed_today} testid="stat-done" />
           <StatCard label="No-shows today" value={stats.no_show_today} testid="stat-noshow" />
+          <StatCard label="Revenue today" value={`₹${Number(stats.revenue_today || 0).toLocaleString("en-IN")}`} accent="text-[#A86246]" testid="stat-revenue" />
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_320px]">

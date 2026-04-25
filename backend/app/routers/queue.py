@@ -61,6 +61,7 @@ async def add_walk_in(
         "service_id": service["id"] if service else None,
         "service_name": service["name"] if service else None,
         "service_duration_minutes": int(service["duration_minutes"]) if service else None,
+        "service_price": float(service.get("price", 0) or 0) if service else 0,
         "created_at": now,
         "served_at": None,
         "finished_at": None,
@@ -157,11 +158,22 @@ async def queue_stats(business_id: str, user: dict = Depends(get_current_user)):
             "finished_at": {"$regex": f"^{today}"},
         }
     )
+    revenue_pipeline = [
+        {"$match": {
+            "business_id": business_id,
+            "status": "completed",
+            "finished_at": {"$regex": f"^{today}"},
+        }},
+        {"$group": {"_id": None, "total": {"$sum": {"$ifNull": ["$service_price", 0]}}}},
+    ]
+    rev_rows = await db.queue.aggregate(revenue_pipeline).to_list(1)
+    revenue_today = float(rev_rows[0]["total"]) if rev_rows else 0.0
     return {
         "waiting": waiting,
         "serving": serving,
         "completed_today": completed_today,
         "no_show_today": no_show_today,
+        "revenue_today": revenue_today,
     }
 
 
@@ -189,7 +201,8 @@ async def analytics(
     total_completed = 0
     total_cancelled = 0
     total_no_show = 0
-    per_day = defaultdict(lambda: {"completed": 0, "no_show": 0})
+    total_revenue = 0.0
+    per_day = defaultdict(lambda: {"completed": 0, "no_show": 0, "revenue": 0.0})
     heatmap = defaultdict(int)
     service_minutes = []
 
@@ -206,6 +219,9 @@ async def analytics(
         if status == "completed":
             total_completed += 1
             per_day[day]["completed"] += 1
+            price = float(r.get("service_price") or 0)
+            total_revenue += price
+            per_day[day]["revenue"] += price
             ref = r.get("served_at") or finished
             try:
                 rdt = datetime.fromisoformat(ref.replace("Z", "+00:00"))
@@ -235,6 +251,7 @@ async def analytics(
             "date": d,
             "completed": per_day[d]["completed"],
             "no_show": per_day[d]["no_show"],
+            "revenue": round(per_day[d]["revenue"], 2),
         })
 
     heatmap_out = []
@@ -258,6 +275,7 @@ async def analytics(
             "no_show": total_no_show,
             "no_show_rate_pct": no_show_rate,
             "avg_service_minutes": avg_service,
+            "revenue": round(total_revenue, 2),
         },
         "series": series,
         "heatmap": heatmap_out,

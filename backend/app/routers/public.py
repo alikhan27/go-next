@@ -83,6 +83,7 @@ async def public_join(business_id: str, body: JoinQueueRequest):
         "service_id": service["id"] if service else None,
         "service_name": service["name"] if service else None,
         "service_duration_minutes": int(service["duration_minutes"]) if service else None,
+        "service_price": float(service.get("price", 0) or 0) if service else 0,
         "created_at": now,
         "served_at": None,
         "finished_at": None,

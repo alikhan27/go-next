@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Navigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { planLimits } from "../lib/plans";
 import DashboardHeader from "../components/DashboardHeader";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -137,7 +138,14 @@ export default function Analytics() {
           </Select>
         </div>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <StatCard
+            label="Revenue"
+            value={`₹${Number(totals.revenue || 0).toLocaleString("en-IN")}`}
+            accent="text-[#A86246]"
+            hint={`completed tickets · last ${days}d`}
+            testid="analytics-revenue"
+          />
           <StatCard label="Completed" value={totals.completed} accent="text-[#4c6547]" hint={`in the last ${days} days`} testid="analytics-completed" />
           <StatCard label="No-shows" value={totals.cancelled + totals.no_show} accent="text-red-600" hint={`${totals.no_show_rate_pct}% of total`} testid="analytics-noshow" />
           <StatCard label="Avg service time" value={`${totals.avg_service_minutes}m`} hint="from Call-next to Done" testid="analytics-avg-service" />
