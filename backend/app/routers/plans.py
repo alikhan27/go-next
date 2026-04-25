@@ -12,5 +12,6 @@ async def plans():
         "plans": [
             {"id": "free", "name": "Free", "price_monthly": 0, **PLAN_LIMITS["free"]},
             {"id": "premium", "name": "Premium", "price_monthly": 19, **PLAN_LIMITS["premium"]},
+            {"id": "premium_plus", "name": "Premium Plus", "price_monthly": 49, **PLAN_LIMITS["premium_plus"]},
         ],
     }

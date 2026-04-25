@@ -50,6 +50,7 @@ export default function DashboardHeader({ activeTab = "queue" }) {
     if (!id) return;
     if (activeTab === "settings") navigate(`/dashboard/${id}/settings`);
     else if (activeTab === "analytics") navigate(`/dashboard/${id}/analytics`);
+    else if (activeTab === "services") navigate(`/dashboard/${id}/services`);
     else navigate(`/dashboard/${id}`);
   };
 
@@ -60,6 +61,7 @@ export default function DashboardHeader({ activeTab = "queue" }) {
 
   const tabs = [
     { key: "queue", label: "Live queue", to: `/dashboard/${current?.id || ""}` },
+    { key: "services", label: "Services", to: `/dashboard/${current?.id || ""}/services` },
     { key: "analytics", label: "Analytics", to: `/dashboard/${current?.id || ""}/analytics` },
     { key: "settings", label: "Settings", to: `/dashboard/${current?.id || ""}/settings` },
   ];
@@ -106,18 +108,23 @@ export default function DashboardHeader({ activeTab = "queue" }) {
           )}
         </Link>
 
-        {auth?.user?.plan && (
-          <span
-            className={`hidden md:inline-flex items-center rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.22em] border ${
-              auth.user.plan === "premium"
-                ? "bg-[#C47C5C]/10 text-[#A86246] border-[#C47C5C]/30"
-                : "bg-stone-100 text-stone-600 border-stone-200"
-            }`}
-            data-testid="plan-badge"
-          >
-            {auth.user.plan === "premium" ? "Premium" : "Free plan"}
-          </span>
-        )}
+        {auth?.user?.plan && (() => {
+          const p = auth.user.plan;
+          const styles = p === "premium_plus"
+            ? "bg-[#2C302E] text-white border-[#2C302E]"
+            : p === "premium"
+              ? "bg-[#C47C5C]/10 text-[#A86246] border-[#C47C5C]/30"
+              : "bg-stone-100 text-stone-600 border-stone-200";
+          const label = p === "premium_plus" ? "Premium+" : p === "premium" ? "Premium" : "Free plan";
+          return (
+            <span
+              className={`hidden md:inline-flex items-center rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.22em] border ${styles}`}
+              data-testid="plan-badge"
+            >
+              {label}
+            </span>
+          );
+        })()}
 
         <nav className="ml-auto hidden md:flex items-center gap-1">
           {tabs.map((t) => (

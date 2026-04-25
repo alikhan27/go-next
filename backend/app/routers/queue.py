@@ -9,7 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..db import db
 from ..models import UpdateStatusRequest, WalkInRequest
 from ..security import get_current_user
-from ..services import next_token_number, owned_business_or_404, public_ticket
+from ..services import (
+    next_token_number,
+    owned_business_or_404,
+    public_ticket,
+    resolve_service_for_ticket,
+)
 
 router = APIRouter(prefix="/business/{business_id}")
 
@@ -39,6 +44,7 @@ async def add_walk_in(
     user: dict = Depends(get_current_user),
 ):
     business = await owned_business_or_404(user["id"], business_id)
+    service = await resolve_service_for_ticket(business_id, body.service_id)
     token_number = await next_token_number(business["id"])
     ticket_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -51,6 +57,9 @@ async def add_walk_in(
         "status": "waiting",
         "booking_type": "walk-in",
         "chair_number": None,
+        "service_id": service["id"] if service else None,
+        "service_name": service["name"] if service else None,
+        "service_duration_minutes": int(service["duration_minutes"]) if service else None,
         "created_at": now,
         "served_at": None,
         "finished_at": None,

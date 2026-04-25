@@ -107,8 +107,7 @@ export default function Login() {
             </Link>
           </p>
           <p className="mt-2 text-xs text-stone-500">
-            Demo owner: admin@go-next.in · admin123<br />
-            Super admin: super@go-next.in · admin123
+            Demo owner: admin@go-next.in · admin123
           </p>
         </div>
       </div>

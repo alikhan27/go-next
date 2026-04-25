@@ -19,6 +19,7 @@ import ResetPassword from "./pages/ResetPassword";
 import LockAccount from "./pages/LockAccount";
 import Onboarding from "./pages/Onboarding";
 import QrPoster from "./pages/QrPoster";
+import Services from "./pages/Services";
 import NotFound from "./pages/NotFound";
 
 function Protected({ children }) {
@@ -77,6 +78,7 @@ export default function App() {
             <Route path="/dashboard/:businessId/analytics" element={<Protected><Analytics /></Protected>} />
             <Route path="/dashboard/:businessId/onboarding" element={<Protected><Onboarding /></Protected>} />
             <Route path="/dashboard/:businessId/qr-poster" element={<Protected><QrPoster /></Protected>} />
+            <Route path="/dashboard/:businessId/services" element={<Protected><Services /></Protected>} />
 
             <Route path="/admin" element={<SuperAdminOnly><AdminPanel /></SuperAdminOnly>} />
 

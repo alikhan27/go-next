@@ -28,6 +28,8 @@ async def ensure_indexes() -> None:
     await db.queue.create_index([("business_id", 1), ("token_number", -1)])
     await db.queue.create_index([("business_id", 1), ("finished_at", -1)])
 
+    await db.services.create_index([("business_id", 1), ("sort_order", 1)])
+
     # Brute-force: auto-expire login attempts after the lockout window
     try:
         await db.login_attempts.create_index(

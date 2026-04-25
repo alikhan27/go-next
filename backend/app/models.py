@@ -62,11 +62,13 @@ class UpdateBusinessRequest(BaseModel):
 class JoinQueueRequest(BaseModel):
     customer_name: str = Field(min_length=1, max_length=80)
     customer_phone: str = Field(min_length=6, max_length=20)
+    service_id: Optional[str] = None
 
 
 class WalkInRequest(BaseModel):
     customer_name: str = Field(min_length=1, max_length=80)
     customer_phone: str = ""
+    service_id: Optional[str] = None
 
 
 StatusT = Literal["waiting", "serving", "completed", "cancelled", "no_show"]
@@ -76,7 +78,21 @@ class UpdateStatusRequest(BaseModel):
     status: StatusT
 
 
+# ---- Services (premium+) ----
+class CreateServiceRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    duration_minutes: int = Field(ge=1, le=480)
+    sort_order: int = Field(default=0, ge=0, le=999)
+
+
+class UpdateServiceRequest(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    duration_minutes: Optional[int] = Field(default=None, ge=1, le=480)
+    sort_order: Optional[int] = Field(default=None, ge=0, le=999)
+    is_active: Optional[bool] = None
+
+
 # ---- Admin ----
 class AdminUserUpdate(BaseModel):
-    plan: Optional[Literal["free", "premium"]] = None
+    plan: Optional[Literal["free", "premium", "premium_plus"]] = None
     is_locked: Optional[bool] = None

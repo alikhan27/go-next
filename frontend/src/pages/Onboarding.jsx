@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "../context/AuthContext";
 import { api, formatApiErrorDetail } from "../lib/api";
+import { planLimits, planLabel } from "../lib/plans";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -56,7 +57,7 @@ export default function Onboarding() {
   const [stations, setStations] = useState(business?.total_chairs || 1);
   const [saving, setSaving] = useState(false);
 
-  const maxStations = auth?.user?.plan === "premium" ? 100 : 2;
+  const maxStations = planLimits(auth?.user).max_stations;
   const joinUrl = useMemo(
     () => (business ? `${window.location.origin}/join/${business.id}` : ""),
     [business],
@@ -175,7 +176,7 @@ export default function Onboarding() {
               <h2 className="font-serif-display text-3xl sm:text-4xl mt-3">How many chairs or stations?</h2>
               <p className="mt-3 text-stone-600">
                 This is how many customers can be served at once. You&apos;re on the{" "}
-                <strong>{auth.user?.plan === "premium" ? "Premium" : "Free"}</strong> plan —
+                <strong>{planLabel(auth?.user)}</strong> plan —
                 up to <strong>{maxStations}</strong> station{maxStations === 1 ? "" : "s"}.
               </p>
               <div className="mt-8 max-w-xs">

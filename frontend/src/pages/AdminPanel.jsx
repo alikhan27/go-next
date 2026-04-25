@@ -22,7 +22,7 @@ import {
 } from "../components/ui/alert-dialog";
 import { toast } from "sonner";
 import {
-  ChevronDown, LogOut, Users, Building2, LayoutDashboard, ArrowUpRight, Shield, Trash2, Tv, ShieldCheck, KeyRound,
+  ChevronDown, LogOut, Users, Building2, LayoutDashboard, Shield, Trash2, Tv, ShieldCheck, KeyRound,
 } from "lucide-react";
 
 function Stat({ label, value, accent, hint, testid }) {
@@ -128,9 +128,14 @@ export default function AdminPanel() {
   });
 
   const planStyle = (p) =>
-    p === "premium"
-      ? "bg-[#C47C5C]/15 text-[#A86246] border-[#C47C5C]/40"
-      : "bg-stone-100 text-stone-600 border-stone-200";
+    p === "premium_plus"
+      ? "bg-[#2C302E] text-white border-[#2C302E]"
+      : p === "premium"
+        ? "bg-[#C47C5C]/15 text-[#A86246] border-[#C47C5C]/40"
+        : "bg-stone-100 text-stone-600 border-stone-200";
+
+  const planLabelText = (p) =>
+    p === "premium_plus" ? "Premium+" : p === "premium" ? "Premium" : "Free";
 
   return (
     <div className="min-h-screen bg-[#F9F8F6]">
@@ -242,7 +247,7 @@ export default function AdminPanel() {
                       <TableCell className="text-stone-600">{u.email}</TableCell>
                       <TableCell className="text-center">{u.outlet_count}</TableCell>
                       <TableCell>
-                        <Badge className={`rounded-full border font-normal ${planStyle(u.plan)}`}>{u.plan}</Badge>
+                        <Badge className={`rounded-full border font-normal ${planStyle(u.plan)}`}>{planLabelText(u.plan)}</Badge>
                       </TableCell>
                       <TableCell className="text-stone-500 text-xs">
                         {u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}
@@ -256,20 +261,32 @@ export default function AdminPanel() {
                               Restore
                             </Button>
                           ) : null}
-                          {u.plan === "premium" ? (
-                            <Button size="sm" variant="outline" className="rounded-full border-stone-300"
-                              onClick={() => setPlan(u.id, "free")}
-                              data-testid={`downgrade-${u.id}`}>
-                              Downgrade
-                            </Button>
-                          ) : (
-                            <Button size="sm"
-                              className="rounded-full bg-[#C47C5C] hover:bg-[#A86246] text-white"
-                              onClick={() => setPlan(u.id, "premium")}
-                              data-testid={`upgrade-${u.id}`}>
-                              <ArrowUpRight className="h-3.5 w-3.5 mr-1" /> Upgrade
-                            </Button>
-                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="outline" className="rounded-full border-stone-300" data-testid={`plan-menu-${u.id}`}>
+                                Plan <ChevronDown className="h-3.5 w-3.5 ml-1" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-44">
+                              <DropdownMenuLabel className="font-normal text-xs">Set plan</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              {[
+                                { id: "free", label: "Free" },
+                                { id: "premium", label: "Premium" },
+                                { id: "premium_plus", label: "Premium Plus" },
+                              ].map((p) => (
+                                <DropdownMenuItem
+                                  key={p.id}
+                                  disabled={u.plan === p.id}
+                                  onClick={() => setPlan(u.id, p.id)}
+                                  data-testid={`set-plan-${p.id}-${u.id}`}
+                                >
+                                  {p.label}
+                                  {u.plan === p.id && <span className="ml-auto text-[10px] text-stone-400">current</span>}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </TableCell>
                     </TableRow>

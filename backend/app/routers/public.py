@@ -6,7 +6,14 @@ from fastapi import APIRouter, HTTPException
 
 from ..db import db
 from ..models import JoinQueueRequest
-from ..services import next_token_number, public_business, public_ticket
+from ..services import (
+    estimate_wait_for_new_join,
+    estimate_wait_for_ticket,
+    next_token_number,
+    public_business,
+    public_ticket,
+    resolve_service_for_ticket,
+)
 
 router = APIRouter(prefix="/public")
 
@@ -26,11 +33,13 @@ async def public_queue_summary(business_id: str):
         raise HTTPException(status_code=404, detail="Business not found")
     waiting = await db.queue.count_documents({"business_id": business_id, "status": "waiting"})
     serving = await db.queue.count_documents({"business_id": business_id, "status": "serving"})
+    eta = await estimate_wait_for_new_join(b)
     return {
         "business": public_business(b),
         "waiting_count": waiting,
         "serving_count": serving,
         "total_chairs": b.get("total_chairs", 1),
+        "estimated_wait_minutes": eta,
     }
 
 
@@ -48,6 +57,17 @@ async def public_join(business_id: str, body: JoinQueueRequest):
     if today_waiting >= int(b.get("token_limit", 100)):
         raise HTTPException(status_code=400, detail="Queue limit reached. Please try later.")
 
+    service = await resolve_service_for_ticket(business_id, body.service_id)
+
+    # If the outlet has any active services published, force the customer
+    # to pick one — keeps ETA math meaningful and avoids blank tickets.
+    if not service:
+        active_count = await db.services.count_documents(
+            {"business_id": business_id, "is_active": True}
+        )
+        if active_count > 0:
+            raise HTTPException(status_code=400, detail="Please choose a service to continue")
+
     token_number = await next_token_number(business_id)
     ticket_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -60,6 +80,9 @@ async def public_join(business_id: str, body: JoinQueueRequest):
         "status": "waiting",
         "booking_type": "remote",
         "chair_number": None,
+        "service_id": service["id"] if service else None,
+        "service_name": service["name"] if service else None,
+        "service_duration_minutes": int(service["duration_minutes"]) if service else None,
         "created_at": now,
         "served_at": None,
         "finished_at": None,
@@ -83,19 +106,11 @@ async def public_ticket_status(ticket_id: str):
             }
         ) + 1
     b = await db.businesses.find_one({"id": t["business_id"]}, {"_id": 0})
-    serving_count = await db.queue.count_documents(
-        {"business_id": t["business_id"], "status": "serving"}
-    )
-    total_chairs = b.get("total_chairs", 1) if b else 1
-    available_chairs = max(total_chairs - serving_count, 0)
-    if position <= available_chairs:
-        eta = 0
-    else:
-        eta = ((position - available_chairs) / max(total_chairs, 1)) * 15
+    eta = await estimate_wait_for_ticket(t, b)
     return {
         "ticket": public_ticket(t),
         "position": position,
-        "estimated_wait_minutes": int(round(eta)),
+        "estimated_wait_minutes": eta,
         "business": public_business(b) if b else None,
     }
 

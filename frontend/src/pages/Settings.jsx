@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { planLimits } from "../lib/plans";
 import DashboardHeader from "../components/DashboardHeader";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -40,6 +41,8 @@ export default function Settings() {
     return <Navigate to={`/dashboard/${businesses[0].id}/settings`} replace />;
   }
   if (!form) return null;
+
+  const limits = planLimits(auth?.user);
 
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -100,13 +103,15 @@ export default function Settings() {
             </div>
             <div>
               <Label>Stations / chairs</Label>
-              <Input type="number" min="1" max="100" className="mt-1.5 h-11" value={form.total_chairs}
+              <Input type="number" min="1" max={limits.max_stations} className="mt-1.5 h-11" value={form.total_chairs}
                 onChange={(e) => set("total_chairs")(e.target.value)} data-testid="settings-chairs" />
+              <p className="mt-1 text-xs text-stone-500">Up to {limits.max_stations} on your current plan.</p>
             </div>
             <div>
               <Label>Daily token limit</Label>
-              <Input type="number" min="1" max="1000" className="mt-1.5 h-11" value={form.token_limit}
+              <Input type="number" min="1" max={limits.max_tokens_per_day} className="mt-1.5 h-11" value={form.token_limit}
                 onChange={(e) => set("token_limit")(e.target.value)} data-testid="settings-token-limit" />
+              <p className="mt-1 text-xs text-stone-500">Up to {limits.max_tokens_per_day} / day on your current plan.</p>
             </div>
             <div className="sm:col-span-2">
               <Label>Station label</Label>

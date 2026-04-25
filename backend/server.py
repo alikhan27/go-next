@@ -22,6 +22,7 @@ from app.routers import business as business_router
 from app.routers import plans as plans_router
 from app.routers import public as public_router
 from app.routers import queue as queue_router
+from app.routers import services as services_router
 from app.startup import ensure_indexes, seed_demo_data
 
 app = FastAPI(title="Go-Next Salon Queue API")
@@ -30,6 +31,8 @@ api = APIRouter(prefix="/api")
 api.include_router(auth_router.router)
 api.include_router(business_router.router)
 api.include_router(queue_router.router)
+api.include_router(services_router.router)
+api.include_router(services_router.public_router)
 api.include_router(public_router.router)
 api.include_router(plans_router.router)
 api.include_router(admin_router.router)

@@ -5,21 +5,26 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
-import { MapPin, Users, Clock } from "lucide-react";
+import { MapPin, Users, Clock, Sparkles } from "lucide-react";
 
 export default function JoinQueue() {
   const { businessId } = useParams();
   const navigate = useNavigate();
   const [summary, setSummary] = useState(null);
+  const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ customer_name: "", customer_phone: "" });
+  const [form, setForm] = useState({ customer_name: "", customer_phone: "", service_id: "" });
   const [submitting, setSubmitting] = useState(false);
   const [notFound, setNotFound] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get(`/public/business/${businessId}/queue-summary`);
-      setSummary(data);
+      const [s, svc] = await Promise.all([
+        api.get(`/public/business/${businessId}/queue-summary`),
+        api.get(`/public/business/${businessId}/services`).catch(() => ({ data: [] })),
+      ]);
+      setSummary(s.data);
+      setServices(svc.data || []);
     } catch (err) {
       if (err.response?.status === 404) setNotFound(true);
     } finally {
@@ -58,11 +63,22 @@ export default function JoinQueue() {
     };
   }, [businessId, navigate]);
 
+  const requiresService = services.length > 0;
+
   const submit = async (e) => {
     e.preventDefault();
+    if (requiresService && !form.service_id) {
+      toast.error("Please pick a service to continue");
+      return;
+    }
     setSubmitting(true);
     try {
-      const { data } = await api.post(`/public/business/${businessId}/join`, form);
+      const payload = {
+        customer_name: form.customer_name,
+        customer_phone: form.customer_phone,
+      };
+      if (form.service_id) payload.service_id = form.service_id;
+      const { data } = await api.post(`/public/business/${businessId}/join`, payload);
       localStorage.setItem(`ticket-${businessId}`, data.id);
       toast.success("You're in the queue");
       navigate(`/ticket/${data.id}`);
@@ -88,9 +104,8 @@ export default function JoinQueue() {
     );
   }
 
-  const { business, waiting_count, serving_count, total_chairs } = summary;
-  const availableChairs = Math.max(total_chairs - serving_count, 0);
-  const estimate = waiting_count <= availableChairs ? 0 : Math.round(((waiting_count - availableChairs) / Math.max(total_chairs, 1)) * 15);
+  const { business, waiting_count, serving_count, total_chairs, estimated_wait_minutes } = summary;
+  const selectedService = services.find((s) => s.id === form.service_id);
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] text-[#2C302E]">
@@ -115,7 +130,7 @@ export default function JoinQueue() {
             </div>
             <div className="rounded-2xl border border-stone-200 bg-white/80 backdrop-blur-xl px-4 py-3 text-center">
               <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">~ Wait</p>
-              <p className="font-serif-display text-2xl">{estimate}m</p>
+              <p className="font-serif-display text-2xl">{estimated_wait_minutes ?? 0}m</p>
             </div>
           </div>
         </div>
@@ -130,7 +145,40 @@ export default function JoinQueue() {
             </p>
           </div>
         ) : (
-          <form onSubmit={submit} className="rounded-2xl border border-stone-200 bg-white p-6 space-y-4" data-testid="join-form">
+          <form onSubmit={submit} className="rounded-2xl border border-stone-200 bg-white p-6 space-y-5" data-testid="join-form">
+            {services.length > 0 && (
+              <div data-testid="join-services">
+                <Label className="flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-[#C47C5C]" />
+                  Pick a service
+                </Label>
+                <p className="mt-1 text-xs text-stone-500">We&apos;ll use this to estimate your wait.</p>
+                <div className="mt-3 grid gap-2">
+                  {services.map((s) => {
+                    const active = form.service_id === s.id;
+                    return (
+                      <button
+                        type="button"
+                        key={s.id}
+                        onClick={() => setForm({ ...form, service_id: s.id })}
+                        className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
+                          active
+                            ? "border-[#C47C5C] bg-[#F4EFE8] text-[#A86246]"
+                            : "border-stone-200 hover:border-stone-300 hover:bg-stone-50"
+                        }`}
+                        data-testid={`join-service-${s.id}`}
+                      >
+                        <span className="font-medium">{s.name}</span>
+                        <span className={`text-xs ${active ? "text-[#A86246]" : "text-stone-500"}`}>
+                          ~ {s.duration_minutes} min
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div>
               <Label>Your name</Label>
               <Input required className="mt-1.5 h-12" placeholder="e.g. Priya"
@@ -145,10 +193,14 @@ export default function JoinQueue() {
                 onChange={(e) => setForm({ ...form, customer_phone: e.target.value })}
                 data-testid="join-phone" />
             </div>
-            <Button type="submit" disabled={submitting}
-              className="w-full h-12 rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white press"
+            <Button type="submit" disabled={submitting || (requiresService && !form.service_id)}
+              className="w-full h-12 rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white press disabled:opacity-50"
               data-testid="join-submit">
-              {submitting ? "Getting your token…" : "Get my token"}
+              {submitting
+                ? "Getting your token…"
+                : selectedService
+                  ? `Get my token · ${selectedService.name}`
+                  : "Get my token"}
             </Button>
             <p className="text-[11px] text-stone-500 flex items-center gap-1.5 justify-center">
               <Clock className="h-3 w-3" /> You&apos;ll see a live status once you&apos;re in.

@@ -20,6 +20,31 @@ def plan_limits(user: dict) -> dict:
     return PLAN_LIMITS[user_plan(user)]
 
 
+def require_paid_plan(user: dict) -> None:
+    """Premium and Premium Plus only — used for service management."""
+    if not plan_limits(user).get("can_manage_services"):
+        plan = user_plan(user).title()
+        raise HTTPException(
+            status_code=403,
+            detail=f"Custom services require Premium. You're on the {plan} plan.",
+        )
+
+
+async def resolve_service_for_ticket(business_id: str, service_id: str | None) -> dict | None:
+    """Fetch the active service belonging to this outlet, or 404 if it
+    doesn't exist or belongs to a different outlet. Returns None when no
+    service was selected (outlet may not use services at all)."""
+    if not service_id:
+        return None
+    svc = await db.services.find_one(
+        {"id": service_id, "business_id": business_id, "is_active": True},
+        {"_id": 0},
+    )
+    if not svc:
+        raise HTTPException(status_code=400, detail="Selected service is unavailable")
+    return svc
+
+
 # ----------------- Brute-force protection -----------------
 async def _recent_attempts(identifier: str) -> list:
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_WINDOW_MINUTES)
@@ -85,10 +110,92 @@ def public_ticket(t: dict) -> dict:
         "status": t["status"],
         "booking_type": t.get("booking_type", "remote"),
         "chair_number": t.get("chair_number"),
+        "service_id": t.get("service_id"),
+        "service_name": t.get("service_name"),
+        "service_duration_minutes": t.get("service_duration_minutes"),
         "created_at": t.get("created_at"),
         "served_at": t.get("served_at"),
         "finished_at": t.get("finished_at"),
     }
+
+
+def public_service(s: dict) -> dict:
+    return {
+        "id": s["id"],
+        "business_id": s["business_id"],
+        "name": s.get("name", ""),
+        "duration_minutes": int(s.get("duration_minutes", 15)),
+        "sort_order": int(s.get("sort_order", 0)),
+        "is_active": bool(s.get("is_active", True)),
+        "created_at": s.get("created_at"),
+    }
+
+
+# ---- ETA helpers ----
+DEFAULT_SERVICE_MINUTES = 15
+
+
+def _ticket_minutes(t: dict) -> int:
+    d = t.get("service_duration_minutes")
+    try:
+        return int(d) if d else DEFAULT_SERVICE_MINUTES
+    except (TypeError, ValueError):
+        return DEFAULT_SERVICE_MINUTES
+
+
+async def estimate_wait_for_ticket(ticket: dict, business: dict | None) -> int:
+    """Minutes the given waiting ticket should expect before being called.
+
+    Sum the service durations of waiting tickets ahead, then divide by the
+    number of stations to account for parallel service. A ticket's own
+    service duration is the wait it imposes on the next person, not
+    itself, so we don't add it.
+    """
+    if not ticket or ticket.get("status") != "waiting":
+        return 0
+    business_id = ticket["business_id"]
+    chairs = max(int((business or {}).get("total_chairs", 1)), 1)
+
+    ahead = await db.queue.find(
+        {
+            "business_id": business_id,
+            "status": "waiting",
+            "token_number": {"$lt": ticket["token_number"]},
+        },
+        {"_id": 0, "service_duration_minutes": 1},
+    ).to_list(1000)
+    ahead_minutes = sum(_ticket_minutes(t) for t in ahead)
+
+    serving_count = await db.queue.count_documents(
+        {"business_id": business_id, "status": "serving"}
+    )
+    available_now = max(chairs - serving_count, 0)
+    position = len(ahead) + 1
+
+    if position <= available_now:
+        return 0
+
+    return int(round(ahead_minutes / chairs))
+
+
+async def estimate_wait_for_new_join(business: dict) -> int:
+    """Wait time a brand-new joiner would see right now (used by the
+    public queue-summary preview before the customer fills the form)."""
+    business_id = business["id"]
+    chairs = max(int(business.get("total_chairs", 1)), 1)
+
+    waiting = await db.queue.find(
+        {"business_id": business_id, "status": "waiting"},
+        {"_id": 0, "service_duration_minutes": 1},
+    ).to_list(1000)
+    serving_count = await db.queue.count_documents(
+        {"business_id": business_id, "status": "serving"}
+    )
+    available_now = max(chairs - serving_count, 0)
+    if len(waiting) < available_now:
+        return 0
+    total_minutes = sum(_ticket_minutes(t) for t in waiting)
+    return int(round(total_minutes / chairs))
 
 
 # ----------------- Business lookups -----------------
