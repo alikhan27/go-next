@@ -97,6 +97,7 @@ def public_business(b: dict) -> dict:
         "token_limit": b.get("token_limit", 100),
         "is_online": b.get("is_online", True),
         "station_label": b.get("station_label", "Station"),
+        "offline_message": b.get("offline_message", ""),
     }
 
 

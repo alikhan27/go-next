@@ -56,6 +56,7 @@ class UpdateBusinessRequest(BaseModel):
     token_limit: Optional[int] = Field(default=None, ge=1, le=1000)
     is_online: Optional[bool] = None
     station_label: Optional[str] = None
+    offline_message: Optional[str] = Field(default=None, max_length=280)
 
 
 # ---- Queue ----

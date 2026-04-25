@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
+import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 
@@ -31,6 +32,7 @@ export default function Settings() {
         token_limit: business.token_limit || 100,
         is_online: !!business.is_online,
         station_label: business.station_label || "Station",
+        offline_message: business.offline_message || "",
       });
     }
   }, [business]);
@@ -125,6 +127,21 @@ export default function Settings() {
                 <p className="text-xs text-stone-500">Turn off to pause the queue after last call.</p>
               </div>
               <Switch checked={form.is_online} onCheckedChange={set("is_online")} data-testid="settings-online" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label htmlFor="offline-message">Offline message</Label>
+              <Textarea
+                id="offline-message"
+                className="mt-1.5 min-h-[88px] resize-none"
+                maxLength={280}
+                placeholder="e.g. Closed for lunch, back at 2 pm. Walk-ins welcome after."
+                value={form.offline_message}
+                onChange={(e) => set("offline_message")(e.target.value)}
+                data-testid="settings-offline-message"
+              />
+              <p className="mt-1 text-xs text-stone-500">
+                Shown to customers on the join page and lobby TV when the queue is paused. {form.offline_message?.length || 0}/280
+              </p>
             </div>
           </div>
 

@@ -138,11 +138,17 @@ export default function JoinQueue() {
 
       <div className="mx-auto max-w-md px-5 -mt-4 pb-16">
         {!business.is_online ? (
-          <div className="rounded-2xl border border-stone-200 bg-white p-6 text-center">
+          <div className="rounded-2xl border border-stone-200 bg-white p-6 text-center" data-testid="join-paused">
             <p className="font-serif-display text-2xl">Queue is paused</p>
-            <p className="mt-2 text-sm text-stone-600">
-              {business.business_name} is not accepting new guests at the moment. Please check back soon.
-            </p>
+            {business.offline_message ? (
+              <p className="mt-3 text-sm text-stone-700 whitespace-pre-line" data-testid="join-offline-message">
+                {business.offline_message}
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-stone-600">
+                {business.business_name} is not accepting new guests at the moment. Please check back soon.
+              </p>
+            )}
           </div>
         ) : (
           <form onSubmit={submit} className="rounded-2xl border border-stone-200 bg-white p-6 space-y-5" data-testid="join-form">
