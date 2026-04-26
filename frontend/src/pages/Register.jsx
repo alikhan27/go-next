@@ -58,13 +58,11 @@ export default function Register() {
         detail.toLowerCase().includes("pending approval")
       ) {
         toast.info(
-          "Account created! Awaiting super admin approval. You will be notified once approved."
+          "Account created! Awaiting super admin approval. You will be notified once approved.",
         );
         navigate("/login");
       } else {
-        toast.error(
-          formatApiErrorDetail(detail) || err.message,
-        );
+        toast.error(formatApiErrorDetail(detail) || err.message);
       }
     } finally {
       setLoading(false);
