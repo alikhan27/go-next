@@ -17,7 +17,7 @@ function StatCard({ label, value, accent, hint, testid }) {
   return (
     <div className="rounded-2xl border border-stone-200 bg-white p-5" data-testid={testid}>
       <p className="text-[11px] uppercase tracking-[0.22em] text-stone-500">{label}</p>
-      <p className={`font-serif-display text-4xl mt-2 ${accent || "text-[#2C302E]"}`}>{value}</p>
+      <p className={`font-serif-display text-4xl mt-2 ${accent || "text-foreground"}`}>{value}</p>
       {hint && <p className="mt-1 text-xs text-stone-500">{hint}</p>}
     </div>
   );
@@ -35,13 +35,9 @@ function Heatmap({ cells }) {
   }, [cells]);
 
   const bg = (v) => {
-    if (v === 0) return "#F4EFE8";
+    if (v === 0) return "hsl(var(--secondary))";
     const t = v / max; // 0..1
-    // Blend from soft sand to terracotta #C47C5C
-    const r = Math.round(244 + (196 - 244) * t);
-    const g = Math.round(239 + (124 - 239) * t);
-    const b = Math.round(232 + (92 - 232) * t);
-    return `rgb(${r},${g},${b})`;
+    return `color-mix(in srgb, hsl(var(--secondary)), hsl(var(--primary)) ${Math.round(t * 100)}%)`;
   };
 
   return (
@@ -116,12 +112,12 @@ export default function Analytics() {
   }));
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6]">
+    <div className="min-h-screen bg-background">
       <DashboardHeader activeTab="analytics" />
       <main className="mx-auto max-w-6xl px-5 py-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Analytics</p>
+            <p className="text-[11px] uppercase tracking-[0.26em] text-primary">Analytics</p>
             <h1 className="font-serif-display text-4xl sm:text-5xl mt-2 leading-none">{business.business_name}</h1>
             <p className="mt-2 text-stone-600 text-sm">How your outlet has been performing.</p>
           </div>
@@ -143,11 +139,11 @@ export default function Analytics() {
           <StatCard
             label="Revenue"
             value={`₹${Number(totals.revenue || 0).toLocaleString("en-IN")}`}
-            accent="text-[#A86246]"
+            accent="text-primary"
             hint={`completed tickets · last ${days}d`}
             testid="analytics-revenue"
           />
-          <StatCard label="Completed" value={totals.completed} accent="text-[#4c6547]" hint={`in the last ${days} days`} testid="analytics-completed" />
+          <StatCard label="Completed" value={totals.completed} accent="text-success" hint={`in the last ${days} days`} testid="analytics-completed" />
           <StatCard label="No-shows" value={totals.cancelled + totals.no_show} accent="text-red-600" hint={`${totals.no_show_rate_pct}% of total`} testid="analytics-noshow" />
           <StatCard label="Avg service time" value={`${totals.avg_service_minutes}m`} hint="from Call-next to Done" testid="analytics-avg-service" />
           <StatCard label="Daily average" value={totals.completed ? Math.round(totals.completed / Math.max(days, 1)) : 0} hint="completions per day" testid="analytics-daily-avg" />
@@ -157,8 +153,8 @@ export default function Analytics() {
           <div className="flex items-end justify-between">
             <h3 className="font-serif-display text-xl">Completions per day</h3>
             <div className="flex items-center gap-4 text-[10px] uppercase tracking-[0.22em] text-stone-500">
-              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#7D9276]" /> Completed</span>
-              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#E3A587]" /> No-shows</span>
+              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-success" /> Completed</span>
+              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary/70" /> No-shows</span>
             </div>
           </div>
           <div className="mt-4 h-[280px]">
@@ -167,15 +163,15 @@ export default function Analytics() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={series} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E6E4E0" vertical={false} />
-                  <XAxis dataKey="shortDate" stroke="#5C5F5D" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#5C5F5D" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="shortDate" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip
-                    contentStyle={{ borderRadius: 12, border: "1px solid #E6E4E0", fontSize: 12 }}
-                    cursor={{ fill: "#F4EFE8" }}
+                    contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", fontSize: 12 }}
+                    cursor={{ fill: "hsl(var(--secondary))" }}
                   />
-                  <Bar dataKey="completed" fill="#7D9276" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="no_show" fill="#E3A587" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="completed" fill="hsl(var(--success))" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="no_show" fill="hsl(var(--primary) / 0.7)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme, THEMES } from "../context/ThemeContext";
 import { Button } from "./ui/button";
+import BrandLogo from "../components/LogoMark";
 import {
   Select,
   SelectContent,
@@ -64,6 +65,7 @@ export default function DashboardHeader({ activeTab = "queue" }) {
   const businesses = auth?.businesses || [];
   const current = businesses.find((b) => b.id === businessId) || businesses[0];
   const hasUnread = useHasUnreadRelease();
+  const appAccentColor = theme?.vars?.["--app-accent"];
 
   // Get current theme colors directly
   const t = THEMES.find((t) => t.id === theme.theme_id) || THEMES[0];
@@ -72,7 +74,8 @@ export default function DashboardHeader({ activeTab = "queue" }) {
     if (!id) return;
     if (activeTab === "settings") navigate(`/dashboard/${id}/settings`);
     else if (activeTab === "analytics") navigate(`/dashboard/${id}/analytics`);
-    else if (activeTab === "collections") navigate(`/dashboard/${id}/collections`);
+    else if (activeTab === "collections")
+      navigate(`/dashboard/${id}/collections`);
     else if (activeTab === "services") navigate(`/dashboard/${id}/services`);
     else navigate(`/dashboard/${id}`);
   };
@@ -93,11 +96,12 @@ export default function DashboardHeader({ activeTab = "queue" }) {
       label: "Analytics",
       to: `/dashboard/${current?.id || ""}/analytics`,
     },
-    {
-      key: "collections",
-      label: "Collections",
-      to: `/dashboard/${current?.id || ""}/collections`,
-    },
+    // Removed Collections tab from here
+    // {
+    //   key: "collections",
+    //   label: "Collections",
+    //   to: `/dashboard/${current?.id || ""}/collections`,
+    // },
   ];
 
   return (
@@ -115,18 +119,7 @@ export default function DashboardHeader({ activeTab = "queue" }) {
           className="flex items-center gap-2"
           data-testid="dashboard-brand"
         >
-          <div
-            className="flex h-8 w-8 items-center justify-center rounded-full text-white font-serif-display"
-            style={{ background: c["--app-accent"] }}
-          >
-            g
-          </div>
-          <span
-            className="text-sm font-semibold"
-            style={{ color: c["--app-text"] }}
-          >
-            Go-Next
-          </span>
+          <BrandLogo color={appAccentColor} />
         </Link>
 
         <Select value={current?.id || ""} onValueChange={switchOutlet}>
@@ -181,6 +174,11 @@ export default function DashboardHeader({ activeTab = "queue" }) {
               : isPremium
                 ? "Premium"
                 : "Free plan";
+            const days = auth.user.plan_days_remaining;
+            const expiryText =
+              typeof days === "number" && p !== "free"
+                ? ` · ${days}d left`
+                : "";
             const style = isPremiumPlus
               ? {
                   background: c["--app-text"],
@@ -205,6 +203,7 @@ export default function DashboardHeader({ activeTab = "queue" }) {
                 data-testid="plan-badge"
               >
                 {label}
+                {expiryText}
               </span>
             );
           })()}

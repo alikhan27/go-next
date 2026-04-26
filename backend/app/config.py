@@ -19,6 +19,8 @@ PASSWORD_RESET_PREVIEW_MODE = True
 ACCOUNT_LOCK_TTL_MINUTES = 60 * 24
 
 # ---- Plan gating ----
+PAID_PLAN_DURATION_DAYS = 30
+
 DEFAULT_PLAN_LIMITS = {
     "free": {
         "max_outlets": 1,

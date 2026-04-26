@@ -72,6 +72,8 @@ async def get_current_user(request: Request) -> dict:
     user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    from .services import sync_user_plan
+    user = await sync_user_plan(user)
     return user
 
 

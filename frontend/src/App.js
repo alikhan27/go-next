@@ -93,7 +93,7 @@ export default function App() {
 
                 <Route path="*" element={<NotFound />} />
               </Routes>
-              <Toaster richColors position="top-right" />
+              <Toaster richColors position="top-center" />
             </AuthProvider>
           </PlanProvider>
         </ThemeProvider>

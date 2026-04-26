@@ -31,7 +31,7 @@ export default function Display() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#1a1d1c] text-stone-300 px-5">
+      <div className="min-h-screen flex items-center justify-center bg-foreground text-stone-300 px-5">
         <div className="text-center">
           <p className="font-serif-display text-5xl">Display unavailable</p>
           <p className="mt-2 text-stone-500">{error}</p>
@@ -40,7 +40,7 @@ export default function Display() {
     );
   }
   if (!data) {
-    return <div className="min-h-screen flex items-center justify-center bg-[#1a1d1c] text-stone-300">Preparing display…</div>;
+    return <div className="min-h-screen flex items-center justify-center bg-foreground text-stone-300">Preparing display…</div>;
   }
 
   const { business, serving, upcoming, waiting_count, total_chairs } = data;
@@ -53,7 +53,7 @@ export default function Display() {
   const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div className="min-h-screen bg-[#1a1d1c] text-stone-100 relative overflow-hidden" data-testid="display-page">
+    <div className="min-h-screen bg-foreground text-stone-100 relative overflow-hidden" data-testid="display-page">
       {/* Decorative warm glow */}
       <div
         className="absolute inset-0 opacity-60 pointer-events-none"
@@ -65,7 +65,7 @@ export default function Display() {
       <div className="relative mx-auto max-w-[1400px] px-8 py-8">
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.32em] text-[#E3A587]">Now serving</p>
+            <p className="text-[11px] uppercase tracking-[0.32em] text-primary/70">Now serving</p>
             <h1 className="font-serif-display text-5xl sm:text-6xl lg:text-7xl leading-none mt-2">
               {business.business_name}
             </h1>
@@ -81,11 +81,11 @@ export default function Display() {
 
         {!business.is_online && (
           <div
-            className="mt-8 rounded-3xl border border-[#C47C5C]/40 bg-[#2a2221]/70 px-8 py-6 flex flex-wrap items-center justify-between gap-4"
+            className="mt-8 rounded-3xl border border-primary/40 bg-foreground/70 px-8 py-6 flex flex-wrap items-center justify-between gap-4"
             data-testid="display-paused-banner"
           >
             <div>
-              <p className="text-[11px] uppercase tracking-[0.32em] text-[#E3A587]">Queue paused</p>
+              <p className="text-[11px] uppercase tracking-[0.32em] text-primary/70">Queue paused</p>
               {business.offline_message ? (
                 <p className="mt-2 font-serif-display text-3xl sm:text-4xl leading-snug text-stone-100 whitespace-pre-line" data-testid="display-offline-message">
                   {business.offline_message}
@@ -96,7 +96,7 @@ export default function Display() {
                 </p>
               )}
             </div>
-            <span className="rounded-full bg-[#C47C5C]/15 text-[#E3A587] border border-[#C47C5C]/40 px-4 py-1.5 text-xs uppercase tracking-[0.28em]">
+            <span className="rounded-full bg-primary/15 text-primary/70 border border-primary/40 px-4 py-1.5 text-xs uppercase tracking-[0.28em]">
               Closed
             </span>
           </div>
@@ -108,20 +108,20 @@ export default function Display() {
             return (
               <div
                 key={chair}
-                className={`rounded-3xl border ${t ? "border-[#C47C5C]/50 bg-[#2a2221]/60" : "border-white/10 bg-white/[0.03]"} p-8 min-h-[240px] flex flex-col justify-between relative overflow-hidden`}
+                className={`rounded-3xl border ${t ? "border-primary/50 bg-foreground/60" : "border-white/10 bg-white/[0.03]"} p-8 min-h-[240px] flex flex-col justify-between relative overflow-hidden`}
                 data-testid={`display-station-${chair}`}
               >
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] uppercase tracking-[0.28em] text-stone-400">
                     {business.station_label || "Station"} · {chair}
                   </p>
-                  <span className={`text-[10px] uppercase tracking-[0.26em] ${t ? "text-[#E3A587]" : "text-stone-500"}`}>
+                  <span className={`text-[10px] uppercase tracking-[0.26em] ${t ? "text-primary/70" : "text-stone-500"}`}>
                     {t ? "In service" : "Available"}
                   </span>
                 </div>
                 {t ? (
                   <div className="mt-6">
-                    <p className="font-serif-display text-7xl sm:text-8xl leading-none text-[#E3A587] tabular-nums">
+                    <p className="font-serif-display text-7xl sm:text-8xl leading-none text-primary/70 tabular-nums">
                       #{String(t.token_number).padStart(3, "0")}
                     </p>
                     <p className="mt-3 font-serif-display text-3xl truncate">{t.customer_name}</p>
@@ -170,7 +170,7 @@ export default function Display() {
               <p className="mt-3 font-serif-display text-3xl leading-tight">
                 Scan the QR at the front desk or visit:
               </p>
-              <p className="mt-3 font-serif-display text-2xl text-[#E3A587] break-all">
+              <p className="mt-3 font-serif-display text-2xl text-primary/70 break-all">
                 go-next.in/join/{business.id}
               </p>
             </div>

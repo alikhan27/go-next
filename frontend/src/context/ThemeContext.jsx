@@ -61,6 +61,8 @@ export const THEMES = [
       "--muted-foreground": "150 3% 40%",
       "--accent": "36 18% 92%",
       "--accent-foreground": "150 5% 18%",
+      "--success": "101 12% 53%",
+      "--success-foreground": "0 0% 100%",
       "--border": "36 12% 88%",
       "--input": "36 12% 88%",
       "--ring": "18 44% 56%",
@@ -99,6 +101,8 @@ export const THEMES = [
       "--muted-foreground": "228 10% 55%",
       "--accent": "228 20% 18%",
       "--accent-foreground": "228 20% 91%",
+      "--success": "158 70% 67%",
+      "--success-foreground": "228 26% 8%",
       "--border": "228 20% 20%",
       "--input": "228 20% 20%",
       "--ring": "234 89% 74%",
@@ -137,6 +141,8 @@ export const THEMES = [
       "--muted-foreground": "100 8% 44%",
       "--accent": "90 14% 90%",
       "--accent-foreground": "100 22% 14%",
+      "--success": "100 32% 59%",
+      "--success-foreground": "0 0% 100%",
       "--border": "90 12% 84%",
       "--input": "90 12% 84%",
       "--ring": "100 22% 39%",
@@ -175,6 +181,8 @@ export const THEMES = [
       "--muted-foreground": "214 14% 46%",
       "--accent": "210 20% 90%",
       "--accent-foreground": "214 40% 16%",
+      "--success": "161 50% 36%",
+      "--success-foreground": "0 0% 100%",
       "--border": "210 20% 84%",
       "--input": "210 20% 84%",
       "--ring": "210 55% 40%",
@@ -213,6 +221,8 @@ export const THEMES = [
       "--muted-foreground": "344 14% 50%",
       "--accent": "350 30% 92%",
       "--accent-foreground": "344 38% 18%",
+      "--success": "132 27% 59%",
+      "--success-foreground": "0 0% 100%",
       "--border": "350 24% 86%",
       "--input": "350 24% 86%",
       "--ring": "344 44% 56%",
@@ -283,7 +293,6 @@ export function ThemeProvider({ children }) {
   const updateTheme = async (themeId) => {
     applyTheme(themeId);
     setThemeState({ theme_id: themeId });
-    await api.patch("/admin/theme", { theme_id: themeId });
   };
 
   return (

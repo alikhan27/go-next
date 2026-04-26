@@ -2,12 +2,19 @@
 and public-response shaping for business + ticket documents."""
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import List, Optional
 
 from fastapi import HTTPException
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from .config import DEFAULT_PLAN_LIMITS, LOCKOUT_THRESHOLD, LOCKOUT_WINDOW_MINUTES, PLAN_LIMITS
+from .config import (
+    DEFAULT_PLAN_LIMITS,
+    LOCKOUT_THRESHOLD,
+    LOCKOUT_WINDOW_MINUTES,
+    PAID_PLAN_DURATION_DAYS,
+    PLAN_LIMITS,
+)
 from .db import db
 from .models import CreateBusinessRequest
 
@@ -16,6 +23,71 @@ from .models import CreateBusinessRequest
 def user_plan(user: dict) -> str:
     p = (user or {}).get("plan") or "free"
     return p if p in PLAN_LIMITS else "free"
+
+
+def parse_dt(value) -> Optional[datetime]:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        try:
+            normalized = value.replace("Z", "+00:00")
+            parsed = datetime.fromisoformat(normalized)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+def paid_plan_expires_at(start: Optional[datetime] = None) -> datetime:
+    return (start or datetime.now(timezone.utc)) + timedelta(days=PAID_PLAN_DURATION_DAYS)
+
+
+async def sync_user_plan(user: dict) -> dict:
+    if not user:
+        return user
+    plan = user_plan(user)
+    expires_at = parse_dt(user.get("plan_expires_at"))
+    pending_plan = user.get("pending_plan")
+    now = datetime.now(timezone.utc)
+    if plan == "free" or not expires_at or expires_at > now:
+        return user
+
+    next_plan = pending_plan if pending_plan in PLAN_LIMITS else "free"
+    updates = {
+        "plan": next_plan,
+        "plan_started_at": now.isoformat(),
+        "pending_plan": None,
+        "pending_plan_requested_at": None,
+    }
+    if next_plan == "free":
+        updates["plan_expires_at"] = None
+    else:
+        updates["plan_expires_at"] = paid_plan_expires_at(now).isoformat()
+    await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    return {**user, **updates}
+
+
+def public_user(user: dict) -> dict:
+    expires_at = parse_dt(user.get("plan_expires_at"))
+    now = datetime.now(timezone.utc)
+    days_remaining = None
+    if expires_at:
+        seconds = (expires_at - now).total_seconds()
+        days_remaining = max(0, int((seconds + 86399) // 86400))
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "name": user.get("name", ""),
+        "role": user.get("role", "owner"),
+        "plan": user_plan(user),
+        "plan_started_at": user.get("plan_started_at"),
+        "plan_expires_at": user.get("plan_expires_at"),
+        "plan_days_remaining": days_remaining,
+        "pending_plan": user.get("pending_plan"),
+        "pending_plan_requested_at": user.get("pending_plan_requested_at"),
+    }
 
 
 def plan_limits(user: dict) -> dict:
@@ -43,7 +115,7 @@ def public_plan(plan_id: str) -> dict:
     }
 
 
-def apply_plan_catalog(overrides: dict | None = None) -> dict:
+def apply_plan_catalog(overrides: Optional[dict] = None) -> dict:
     PLAN_LIMITS.clear()
     for plan_id, defaults in DEFAULT_PLAN_LIMITS.items():
         source = overrides.get(plan_id, {}) if isinstance(overrides, dict) else {}
@@ -73,7 +145,7 @@ def require_paid_plan(user: dict) -> None:
         )
 
 
-def requested_service_ids(service_ids: list[str] | None, service_id: str | None = None) -> list[str]:
+def requested_service_ids(service_ids: Optional[List[str]], service_id: Optional[str] = None) -> List[str]:
     ids = []
     seen = set()
     for candidate in (service_ids or []) + ([service_id] if service_id else []):
@@ -85,9 +157,9 @@ def requested_service_ids(service_ids: list[str] | None, service_id: str | None 
 
 async def resolve_services_for_ticket(
     business_id: str,
-    service_ids: list[str] | None = None,
-    service_id: str | None = None,
-) -> list[dict]:
+    service_ids: Optional[List[str]] = None,
+    service_id: Optional[str] = None,
+) -> List[dict]:
     """Fetch active services for this outlet in the same order requested."""
     ids = requested_service_ids(service_ids, service_id)
     if not ids:
@@ -226,7 +298,7 @@ def _ticket_minutes(t: dict) -> int:
         return DEFAULT_SERVICE_MINUTES
 
 
-async def estimate_wait_for_ticket(ticket: dict, business: dict | None) -> int:
+async def estimate_wait_for_ticket(ticket: dict, business: Optional[dict]) -> int:
     """Minutes the given waiting ticket should expect before being called.
 
     Sum the service durations of waiting tickets ahead, then divide by the
@@ -281,13 +353,13 @@ async def estimate_wait_for_new_join(business: dict) -> int:
     return int(round(total_minutes / chairs))
 
 
-def utc_day_bounds(now: datetime | None = None) -> tuple[datetime, datetime]:
+def utc_day_bounds(now: Optional[datetime] = None) -> tuple[datetime, datetime]:
     ref = now or datetime.now(timezone.utc)
     start = ref.replace(hour=0, minute=0, second=0, microsecond=0)
     return start, start + timedelta(days=1)
 
 
-async def issued_today_count(business_id: str, now: datetime | None = None) -> int:
+async def issued_today_count(business_id: str, now: Optional[datetime] = None) -> int:
     start, end = utc_day_bounds(now)
     return await db.queue.count_documents(
         {
@@ -300,7 +372,7 @@ async def issued_today_count(business_id: str, now: datetime | None = None) -> i
     )
 
 
-def _free_chair_number(business: dict, serving_tickets: list[dict]) -> int | None:
+def _free_chair_number(business: dict, serving_tickets: List[dict]) -> Optional[int]:
     taken = {s.get("chair_number") for s in serving_tickets if s.get("chair_number")}
     total_chairs = max(int(business.get("total_chairs", 1)), 1)
     for i in range(1, total_chairs + 1):
@@ -311,8 +383,7 @@ def _free_chair_number(business: dict, serving_tickets: list[dict]) -> int | Non
 
 async def assign_waiting_ticket_to_chair(
     business: dict,
-    *,
-    ticket_id: str | None = None,
+    ticket_id: Optional[str] = None,
     prefer_next: bool = False,
 ) -> dict:
     """Promote a waiting ticket to serving while keeping chair assignment unique.
@@ -325,7 +396,11 @@ async def assign_waiting_ticket_to_chair(
         raise ValueError("assign_waiting_ticket_to_chair requires ticket_id or prefer_next")
 
     business_id = business["id"]
+    start, end = utc_day_bounds()
+    today_query = {"$gte": start.isoformat(), "$lt": end.isoformat()}
     for _ in range(5):
+        # We must look at ALL serving tickets to find a free chair,
+        # otherwise yesterday's "ghost" serving tickets will block the unique index.
         serving_tickets = await db.queue.find(
             {"business_id": business_id, "status": "serving"},
             {"_id": 0, "chair_number": 1},
@@ -346,9 +421,9 @@ async def assign_waiting_ticket_to_chair(
             target_id = target["id"]
         else:
             target = await db.queue.find_one(
-                {"business_id": business_id, "status": "waiting"},
+                {"business_id": business_id, "status": "waiting", "created_at": today_query},
                 {"_id": 0},
-                sort=[("token_number", 1)],
+                sort=[("created_at", 1), ("token_number", 1)],
             )
             if not target:
                 raise HTTPException(status_code=404, detail="No one in the waiting queue")
@@ -378,8 +453,16 @@ async def assign_waiting_ticket_to_chair(
 
 # ----------------- Business lookups -----------------
 async def next_token_number(business_id: str) -> int:
+    start, end = utc_day_bounds()
     last = await db.queue.find(
-        {"business_id": business_id}, {"_id": 0, "token_number": 1}
+        {
+            "business_id": business_id,
+            "created_at": {
+                "$gte": start.isoformat(),
+                "$lt": end.isoformat(),
+            },
+        },
+        {"_id": 0, "token_number": 1}
     ).sort("token_number", -1).limit(1).to_list(1)
     return (last[0]["token_number"] + 1) if last else 1
 

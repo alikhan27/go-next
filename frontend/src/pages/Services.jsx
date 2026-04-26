@@ -17,6 +17,12 @@ import {
 } from "../components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Plus, Trash2, Sparkles, ArrowLeft, Pencil, Check, X } from "lucide-react";
+import { useTableControls } from "../hooks/useTableControls";
+import {
+  TableToolbar,
+  SortableHead,
+  TablePagination,
+} from "../components/TableControls";
 
 /**
  * Owner page to manage the services offered by a single outlet.
@@ -41,6 +47,11 @@ export default function Services() {
 
   const limits = planLimits(auth?.user);
   const canManage = isPaidPlan(auth?.user);
+
+  const table = useTableControls(items, {
+    searchKeys: ["name"],
+    initialSort: { key: "sort_order", dir: "asc" },
+  });
 
   const load = useCallback(async () => {
     if (!business) return;
@@ -128,7 +139,7 @@ export default function Services() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6]" data-testid="services-page">
+    <div className="min-h-screen bg-background" data-testid="services-page">
       <DashboardHeader activeTab="services" />
       <main className="mx-auto max-w-4xl px-5 py-10">
         <Link
@@ -140,7 +151,7 @@ export default function Services() {
         </Link>
         <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Services</p>
+            <p className="text-[11px] uppercase tracking-[0.26em] text-primary">Services</p>
             <h1 className="font-serif-display text-4xl sm:text-5xl mt-2 leading-none">
               {business.business_name}
             </h1>
@@ -157,16 +168,16 @@ export default function Services() {
 
         {!canManage ? (
           <div
-            className="mt-10 rounded-3xl border-2 border-[#C47C5C]/40 bg-white p-8 text-center"
+            className="mt-10 rounded-3xl border-2 border-primary/40 bg-white p-8 text-center"
             data-testid="services-upgrade-card"
           >
-            <Sparkles className="mx-auto h-7 w-7 text-[#C47C5C]" />
+            <Sparkles className="mx-auto h-7 w-7 text-primary" />
             <h2 className="font-serif-display text-3xl mt-4">Custom services unlock on Premium.</h2>
             <p className="mt-2 text-stone-600 max-w-md mx-auto text-sm">
               Tell customers what you offer — haircut, beard trim, colouring — and Go-Next will use the duration of each to power accurate ETAs.
             </p>
             <Link to="/#pricing" className="mt-6 inline-block">
-              <Button className="rounded-full bg-[#C47C5C] hover:bg-[#A86246] text-white h-11 px-6 press" data-testid="services-see-pricing">
+              <Button className="rounded-full bg-primary hover:bg-primary/90 text-white h-11 px-6 press" data-testid="services-see-pricing">
                 See plans
               </Button>
             </Link>
@@ -219,7 +230,7 @@ export default function Services() {
               <Button
                 type="submit"
                 disabled={creating || atLimit || !draft.name.trim()}
-                className="h-11 rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white press"
+                className="h-11 rounded-full bg-foreground hover:bg-foreground/90 text-white press"
                 data-testid="service-add-btn"
               >
                 <Plus className="h-4 w-4 mr-1.5" /> {creating ? "Adding…" : "Add service"}
@@ -232,25 +243,26 @@ export default function Services() {
             </form>
 
             <div className="mt-6 rounded-2xl border border-stone-200 bg-white overflow-hidden">
+              <TableToolbar query={table.query} onQueryChange={table.setSearch} total={table.total} pageSize={table.pageSize} onPageSizeChange={table.setPageSize} />
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-[#F4EFE8]/40">
-                    <TableHead className="pl-5">Service</TableHead>
-                    <TableHead className="w-[110px]">Minutes</TableHead>
-                    <TableHead className="w-[120px]">Price</TableHead>
-                    <TableHead className="w-[100px]">Active</TableHead>
+                  <TableRow className="bg-secondary/40">
+                    <SortableHead label="Service" sortKey="name" sort={table.sort} onToggle={table.toggleSort} className="pl-5" />
+                    <SortableHead label="Minutes" sortKey="duration_minutes" sort={table.sort} onToggle={table.toggleSort} className="w-[110px]" />
+                    <SortableHead label="Price" sortKey="price" sort={table.sort} onToggle={table.toggleSort} className="w-[120px]" />
+                    <SortableHead label="Active" sortKey="is_active" sort={table.sort} onToggle={table.toggleSort} className="w-[100px]" />
                     <TableHead className="w-[180px] pr-5 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow><TableCell colSpan={5} className="text-center text-stone-400 py-8">Loading…</TableCell></TableRow>
-                  ) : items.length === 0 ? (
+                  ) : table.total === 0 ? (
                     <TableRow><TableCell colSpan={5} className="text-center text-stone-500 py-10" data-testid="services-empty">
-                      No services yet. Add your first above so customers know what you offer.
+                      No services found.
                     </TableCell></TableRow>
                   ) : (
-                    items.map((s) => {
+                    table.visible.map((s) => {
                       const isEditing = editingId === s.id;
                       return (
                         <TableRow key={s.id} data-testid={`service-row-${s.id}`}>
@@ -305,10 +317,10 @@ export default function Services() {
                             <div className="flex justify-end gap-2">
                               {isEditing ? (
                                 <>
-                                  <Button size="sm" variant="outline" className="rounded-full border-stone-300 h-8" onClick={() => setEditingId(null)} data-testid={`service-cancel-${s.id}`}>
+                                  <Button size="sm" variant="ghost" className="rounded-full text-stone-500 h-8" onClick={() => setEditingId(null)} data-testid={`service-cancel-${s.id}`}>
                                     <X className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Button size="sm" className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white h-8" onClick={() => saveEdit(s)} data-testid={`service-save-${s.id}`}>
+                                  <Button size="sm" className="rounded-full bg-success hover:bg-success/90 text-white h-8" onClick={() => saveEdit(s)} data-testid={`service-save-${s.id}`}>
                                     <Check className="h-3.5 w-3.5" />
                                   </Button>
                                 </>
@@ -347,12 +359,13 @@ export default function Services() {
                             </div>
                           </TableCell>
                         </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                        );
+                        })
+                        )}
+                        </TableBody>
+                        </Table>
+                        <TablePagination page={table.page} totalPages={table.totalPages} onPageChange={table.setPage} />
+                        </div>
           </>
         )}
       </main>

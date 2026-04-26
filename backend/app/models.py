@@ -84,14 +84,14 @@ class UpdateStatusRequest(BaseModel):
 
 class MarkPaidRequest(BaseModel):
     paid: bool
-    payment_method: Optional[PaymentMethodT] = None
+    payment_method: PaymentMethodT
 
 
 class CompleteTicketRequest(BaseModel):
     service_ids: list[str] = Field(default_factory=list)
     final_amount: float = Field(ge=0, le=1_000_000)
-    paid: bool = False
-    payment_method: Optional[PaymentMethodT] = None
+    paid: bool = True
+    payment_method: PaymentMethodT
 
 
 # ---- Services (premium+) ----
@@ -114,6 +114,10 @@ class UpdateServiceRequest(BaseModel):
 class AdminUserUpdate(BaseModel):
     plan: Optional[Literal["free", "premium", "premium_plus"]] = None
     is_locked: Optional[bool] = None
+
+
+class PlanChangeRequest(BaseModel):
+    plan: Literal["free", "premium", "premium_plus"]
 
 
 class AdminPlanUpdate(BaseModel):

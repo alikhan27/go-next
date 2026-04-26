@@ -28,7 +28,7 @@ export function AuthProvider({ children }) {
 
   const register = async (payload) => {
     const { data } = await api.post("/auth/register", payload);
-    setAuth({ user: data.user, businesses: data.businesses || [] });
+    // setAuth({ user: data.user, businesses: data.businesses || [] }); // Removed automatic login
     return data;
   };
 
@@ -55,8 +55,14 @@ export function AuthProvider({ children }) {
       : prev);
   };
 
+  const updateUser = (user) => {
+    setAuth((prev) => (prev && prev !== false)
+      ? { ...prev, user: { ...(prev.user || {}), ...user } }
+      : prev);
+  };
+
   return (
-    <AuthContext.Provider value={{ auth, login, register, logout, refresh, setAuth, addBusiness, updateBusiness, removeBusiness }}>
+    <AuthContext.Provider value={{ auth, login, register, logout, refresh, setAuth, addBusiness, updateBusiness, removeBusiness, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

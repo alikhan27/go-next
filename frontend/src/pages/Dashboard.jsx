@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
-import { api, formatApiErrorDetail } from "../lib/api";
+import { api, formatApiErrorDetail, API } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import DashboardHeader from "../components/DashboardHeader";
 import { Button } from "../components/ui/button";
@@ -24,14 +24,14 @@ function StatCard({ label, value, accent, testid }) {
   return (
     <div className="rounded-2xl border border-stone-200 bg-white p-5" data-testid={testid}>
       <p className="text-[11px] uppercase tracking-[0.22em] text-stone-500">{label}</p>
-      <p className={`font-serif-display text-4xl mt-2 ${accent || "text-[#2C302E]"}`}>{value}</p>
+      <p className={`font-serif-display text-4xl mt-2 ${accent || "text-foreground"}`}>{value}</p>
     </div>
   );
 }
 
 function statusStyle(status) {
-  if (status === "serving") return "bg-[#7D9276]/15 text-[#4c6547] border-[#7D9276]/40";
-  if (status === "waiting") return "bg-[#E3A587]/20 text-[#A86246] border-[#E3A587]/50";
+  if (status === "serving") return "bg-success/15 text-success border-success/40";
+  if (status === "waiting") return "bg-primary/20 text-primary border-primary/50";
   if (status === "completed") return "bg-stone-100 text-stone-600 border-stone-200";
   return "bg-red-50 text-red-600 border-red-100";
 }
@@ -72,7 +72,7 @@ function PaymentMethodCards({ value, onChange, testidPrefix = "payment-method" }
             onClick={() => onChange(option.id)}
             className={`rounded-xl border px-4 py-3 text-left transition-colors ${
               active
-                ? "border-[#C47C5C] bg-[#F4EFE8]"
+                ? "border-primary bg-secondary"
                 : "border-stone-200 bg-white hover:border-stone-300"
             }`}
             data-testid={`${testidPrefix}-${option.id}`}
@@ -112,16 +112,37 @@ export default function Dashboard() {
     if (business) setIsOnline(!!business.is_online);
   }, [business]);
 
+  useEffect(() => {
+    if (!business) return;
+
+    const eventSource = new EventSource(`${API}/business/${business.id}/queue/events`, { withCredentials: true });
+    
+    eventSource.onmessage = (event) => {
+      try {
+        if (!event.data) return;
+        const tickets = JSON.parse(event.data);
+        setTickets(tickets);
+      } catch (e) {
+        console.error("SSE JSON Parse Error:", e, "Data:", event.data);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("SSE Error:", err);
+      eventSource.close();
+    };
+
+    return () => eventSource.close();
+  }, [business]);
+
   const load = useCallback(async () => {
     if (!business) return;
     try {
-      const [q, s, r, svc] = await Promise.all([
-        api.get(`/business/${business.id}/queue`),
+      const [s, r, svc] = await Promise.all([
         api.get(`/business/${business.id}/stats`),
         api.get(`/business/${business.id}/recent-completed?page=${recentMeta.page}&page_size=${recentMeta.page_size}`),
         api.get(`/business/${business.id}/services`).catch(() => ({ data: [] })),
       ]);
-      setTickets(q.data);
       setStats(s.data);
       setRecent(r.data.items || []);
       setRecentMeta((prev) => ({
@@ -136,12 +157,6 @@ export default function Dashboard() {
       /* ignore */
     }
   }, [business, recentMeta.page, recentMeta.page_size]);
-
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 3000);
-    return () => clearInterval(id);
-  }, [load]);
 
   const waiting = useMemo(() => tickets.filter((t) => t.status === "waiting"), [tickets]);
   const serving = useMemo(() => tickets.filter((t) => t.status === "serving"), [tickets]);
@@ -237,7 +252,7 @@ export default function Dashboard() {
     setCompletion({
       service_ids: selectedIds,
       final_amount: String(baseAmount || 0),
-      payment_method: ticket.payment_method || "",
+      payment_method: ticket.payment_method ?? null, // Use null instead of ""
       amountDirty: false,
     });
     setCompleteOpen(true);
@@ -342,12 +357,12 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6]">
+    <div className="min-h-screen bg-background">
       <DashboardHeader activeTab="queue" />
       <main className="mx-auto max-w-6xl px-5 py-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Live queue</p>
+            <p className="text-[11px] uppercase tracking-[0.26em] text-primary">Live queue</p>
             <h1 className="font-serif-display text-4xl sm:text-5xl mt-2 leading-none">{business.business_name}</h1>
             <p className="mt-2 text-stone-600 text-sm">
               {[business.address, business.city, business.state, business.pincode].filter(Boolean).join(", ")}
@@ -355,7 +370,7 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 rounded-full border border-stone-200 bg-white px-4 py-2">
-              <span className={`h-2 w-2 rounded-full ${isOnline ? "bg-[#7D9276]" : "bg-stone-400"}`} />
+              <span className={`h-2 w-2 rounded-full ${isOnline ? "bg-success" : "bg-stone-400"}`} />
               <span className="text-xs font-medium text-stone-700">{isOnline ? "Accepting guests" : "Paused"}</span>
               <Switch checked={isOnline} onCheckedChange={toggleOnline} data-testid="dashboard-online-toggle" />
             </div>
@@ -363,11 +378,11 @@ export default function Dashboard() {
         </div>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <StatCard label="Waiting" value={stats.waiting} accent="text-[#A86246]" testid="stat-waiting" />
-          <StatCard label="Serving" value={stats.serving} accent="text-[#4c6547]" testid="stat-serving" />
+          <StatCard label="Waiting" value={stats.waiting} accent="text-primary" testid="stat-waiting" />
+          <StatCard label="Serving" value={stats.serving} accent="text-success" testid="stat-serving" />
           <StatCard label="Done today" value={stats.completed_today} testid="stat-done" />
           <StatCard label="No-shows today" value={stats.no_show_today} testid="stat-noshow" />
-          <StatCard label="Revenue today" value={`₹${Number(stats.revenue_today || 0).toLocaleString("en-IN")}`} accent="text-[#A86246]" testid="stat-revenue" />
+
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -416,7 +431,7 @@ export default function Dashboard() {
                                   key={svc.id}
                                   className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
                                     checked
-                                      ? "border-[#C47C5C]/50 bg-[#F4EFE8]"
+                                      ? "border-primary/50 bg-secondary"
                                       : "border-stone-200"
                                   }`}
                                 >
@@ -438,7 +453,7 @@ export default function Dashboard() {
                             })}
                           </div>
                           {walkInSelectedServices.length > 0 && (
-                            <div className="mt-3 rounded-xl bg-[#F4EFE8] px-4 py-3 text-sm text-[#7A4C38]" data-testid="walkin-services-summary">
+                            <div className="mt-3 rounded-xl bg-secondary px-4 py-3 text-sm text-primary" data-testid="walkin-services-summary">
                               <span className="font-medium">
                                 {walkInSelectedServices.length === 1
                                   ? walkInSelectedServices[0].name
@@ -452,7 +467,7 @@ export default function Dashboard() {
                         </div>
                       )}
                       <DialogFooter>
-                        <Button type="submit" className="rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white h-11 px-6" data-testid="walkin-submit">
+                        <Button type="submit" className="rounded-full bg-foreground hover:bg-foreground/90 text-white h-11 px-6" data-testid="walkin-submit">
                           Add to queue
                         </Button>
                       </DialogFooter>
@@ -460,7 +475,7 @@ export default function Dashboard() {
                   </DialogContent>
                 </Dialog>
                 <Button onClick={callNext}
-                  className="rounded-full bg-[#C47C5C] hover:bg-[#A86246] text-white press"
+                  className="rounded-full bg-primary hover:bg-primary/90 text-white press"
                   disabled={waiting.length === 0 || serving.length >= business.total_chairs}
                   data-testid="call-next-btn">
                   <ChevronRight className="h-4 w-4 mr-1" />
@@ -504,7 +519,7 @@ export default function Dashboard() {
                               key={svc.id}
                               className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
                                 checked
-                                  ? "border-[#C47C5C]/50 bg-[#F4EFE8]"
+                                  ? "border-primary/50 bg-secondary"
                                   : "border-stone-200"
                               }`}
                             >
@@ -570,14 +585,18 @@ export default function Dashboard() {
                     <Button
                       type="submit"
                       disabled={completing}
-                      className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white h-11 px-6"
+                      className="rounded-full bg-success hover:bg-success/90 text-white h-11 px-6"
                       data-testid="complete-ticket-submit"
                     >
-                      {completing
-                        ? "Finishing checkout…"
-                        : completion.payment_method
-                          ? "Complete & mark paid"
-                          : "Complete without payment"}
+                                        {(() => {
+                    if (completing) {
+                      return "Finishing checkout…";
+                    }
+                    if (completion.payment_method) {
+                      return "Complete & mark paid";
+                    }
+                    return "Complete Service"; // Changed from "Complete without payment"
+                  })()}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -624,7 +643,7 @@ export default function Dashboard() {
                     <Button
                       type="submit"
                       disabled={paymentSubmitting || !paymentMethodChoice}
-                      className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white h-11 px-6"
+                      className="rounded-full bg-success hover:bg-success/90 text-white h-11 px-6"
                       data-testid="payment-method-submit"
                     >
                       {paymentSubmitting ? "Saving…" : "Confirm payment"}
@@ -692,7 +711,7 @@ export default function Dashboard() {
                         {t.status === "serving" && (
                           <>
                             <Button size="sm"
-                              className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white"
+                              className="rounded-full bg-success hover:bg-success/90 text-white"
                               onClick={() => openCompleteDialog(t)}
                               data-testid={`complete-${t.token_number}`}>
                               <Check className="h-3.5 w-3.5 mr-1" /> Checkout
@@ -715,7 +734,7 @@ export default function Dashboard() {
 
             {recent.length > 0 && (
               <div className="mt-8 border-t border-stone-200 pt-6" data-testid="recent-completed">
-                <div className="rounded-2xl border border-stone-200 bg-[#FCFBF9] p-5 sm:p-6">
+                <div className="rounded-2xl border border-stone-200 bg-card p-5 sm:p-6">
                   <div className="flex flex-wrap items-end justify-between gap-3">
                     <div>
                       <h3 className="font-serif-display text-xl">Today&apos;s completions</h3>
@@ -735,9 +754,9 @@ export default function Dashboard() {
                       >
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div className="min-w-0 flex items-start gap-3">
-                            <div className="rounded-xl bg-[#F4EFE8] px-3 py-2 text-center">
+                            <div className="rounded-xl bg-secondary px-3 py-2 text-center">
                               <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">Token</div>
-                              <div className="font-serif-display text-xl leading-none text-[#A86246]">
+                              <div className="font-serif-display text-xl leading-none text-primary">
                                 #{String(t.token_number).padStart(3, "0")}
                               </div>
                             </div>
@@ -748,7 +767,7 @@ export default function Dashboard() {
                                   {t.service_count > 1 ? `${t.service_count} services` : t.service_name || "No service logged"}
                                 </span>
                                 {t.service_price > 0 && (
-                                  <span className="rounded-full bg-[#F4EFE8] px-2.5 py-1 text-[#A86246]">
+                                  <span className="rounded-full bg-secondary px-2.5 py-1 text-primary">
                                     ₹{Number(t.service_price).toLocaleString("en-IN")}
                                   </span>
                                 )}
@@ -761,7 +780,7 @@ export default function Dashboard() {
                                 <Button
                                   size="sm"
                                   variant="default"
-                                  className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white"
+                                  className="rounded-full bg-success hover:bg-success/90 text-white"
                                   onClick={() => togglePaid(t.id, false)}
                                   data-testid={`recent-paid-toggle-${t.token_number}`}
                                 >
@@ -772,7 +791,7 @@ export default function Dashboard() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="rounded-full border-[#C47C5C]/40 text-[#A86246] hover:bg-[#F4EFE8]"
+                                  className="rounded-full border-primary/40 text-primary hover:bg-secondary"
                                   onClick={() => openPaymentDialog(t)}
                                   data-testid={`recent-paid-toggle-${t.token_number}`}
                                 >
@@ -798,7 +817,7 @@ export default function Dashboard() {
                                   {serviceListForTicket(t).map((serviceName, index) => (
                                     <span
                                       key={`${t.id}-service-${index}`}
-                                      className="rounded-full border border-stone-200 bg-[#FCFBF9] px-2.5 py-1 text-xs text-stone-700"
+                                      className="rounded-full border border-stone-200 bg-card px-2.5 py-1 text-xs text-stone-700"
                                     >
                                       {serviceName}
                                     </span>
@@ -853,8 +872,8 @@ export default function Dashboard() {
             <div className="rounded-2xl border border-stone-200 bg-white p-6">
               <h3 className="font-serif-display text-xl">Customer join link</h3>
               <p className="mt-1 text-xs text-stone-500">Print the QR code or share the link.</p>
-              <div id="qr-code" className="mt-4 flex items-center justify-center rounded-xl bg-[#F4EFE8] p-5">
-                <QRCodeSVG value={joinUrl} size={150} bgColor="#F4EFE8" fgColor="#2C302E" />
+              <div id="qr-code" className="mt-4 flex items-center justify-center rounded-xl bg-secondary p-5">
+                <QRCodeSVG value={joinUrl} size={150} bgColor="hsl(var(--secondary))" fgColor="hsl(var(--foreground))" />
               </div>
               <div className="mt-4 flex gap-2">
                 <Button onClick={() => copy(joinUrl, "Join link")} variant="outline" className="rounded-full border-stone-300 flex-1" data-testid="copy-join-link">
@@ -870,7 +889,7 @@ export default function Dashboard() {
                 rel="noreferrer"
                 data-testid="open-qr-poster"
               >
-                <Button variant="ghost" className="mt-2 w-full rounded-full text-[#A86246] hover:bg-[#F4EFE8]">
+                <Button variant="ghost" className="mt-2 w-full rounded-full text-primary hover:bg-secondary">
                   <Printer className="h-4 w-4 mr-1.5" /> Print poster for reception
                 </Button>
               </Link>
@@ -879,7 +898,7 @@ export default function Dashboard() {
 
             <div className="rounded-2xl border border-stone-200 bg-white p-6">
               <h3 className="font-serif-display text-xl flex items-center gap-2">
-                <Tv className="h-4 w-4 text-[#A86246]" /> Public TV display
+                <Tv className="h-4 w-4 text-primary" /> Public TV display
               </h3>
               <p className="mt-1 text-xs text-stone-500">Open this on a lobby screen to show who&apos;s being served now.</p>
               <div className="mt-3 flex gap-2">
@@ -899,9 +918,9 @@ export default function Dashboard() {
             <div className="rounded-2xl border border-stone-200 bg-white p-6">
               <h3 className="font-serif-display text-xl">Tips</h3>
               <ul className="mt-3 space-y-2 text-sm text-stone-600">
-                <li className="flex gap-2"><Plus className="h-4 w-4 text-[#C47C5C] flex-none mt-0.5" /> Use <strong>Call next</strong> to auto-assign the next free station.</li>
-                <li className="flex gap-2"><Plus className="h-4 w-4 text-[#C47C5C] flex-none mt-0.5" /> Mark waiting guests as no-show to keep analytics accurate.</li>
-                <li className="flex gap-2"><Plus className="h-4 w-4 text-[#C47C5C] flex-none mt-0.5" /> Open the TV display on a lobby screen for customers.</li>
+                <li className="flex gap-2"><Plus className="h-4 w-4 text-primary flex-none mt-0.5" /> Use <strong>Call next</strong> to auto-assign the next free station.</li>
+                <li className="flex gap-2"><Plus className="h-4 w-4 text-primary flex-none mt-0.5" /> Mark waiting guests as no-show to keep analytics accurate.</li>
+                <li className="flex gap-2"><Plus className="h-4 w-4 text-primary flex-none mt-0.5" /> Open the TV display on a lobby screen for customers.</li>
               </ul>
             </div>
           </aside>

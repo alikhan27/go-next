@@ -61,10 +61,11 @@ import {
   ShieldCheck,
   KeyRound,
   SlidersHorizontal,
+  XCircle,
 } from "lucide-react";
 import { Palette } from "lucide-react";
 import { useTheme, THEMES } from "../context/ThemeContext";
-
+import BrandLogo from "../components/LogoMark";
 function Stat({ label, value, accent, hint, testid }) {
   return (
     <div
@@ -75,7 +76,7 @@ function Stat({ label, value, accent, hint, testid }) {
         {label}
       </p>
       <p
-        className={`font-serif-display text-4xl mt-2 ${accent || "text-[#2C302E]"}`}
+        className={`font-serif-display text-4xl mt-2 ${accent || "text-foreground"}`}
       >
         {value}
       </p>
@@ -84,55 +85,27 @@ function Stat({ label, value, accent, hint, testid }) {
   );
 }
 
-export default function AdminPanel() {
-  const { auth, logout } = useAuth();
-  const { catalog, setCatalog } = usePlans();
-  const navigate = useNavigate();
-  const [stats, setStats] = useState(null);
-  const [users, setUsers] = useState([]);
-  const [outlets, setOutlets] = useState([]);
-  const [lockouts, setLockouts] = useState([]);
-  const [plans, setPlans] = useState([]);
-  const [pendingUsers, setPendingUsers] = useState([]);
+// Standardized table state for server-side
+function useServerTable(
+  endpoint,
+  { initialSort = { key: "created_at", dir: "desc" } } = {},
+) {
+  const [data, setData] = useState({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 25,
+  });
   const [loading, setLoading] = useState(true);
-  const [savingPlans, setSavingPlans] = useState({});
-  const { theme, updateTheme } = useTheme();
-  const t = THEMES.find((th) => th.id === theme.theme_id) || THEMES[0];
-  const c = t.vars;
-  const [savingTheme, setSavingTheme] = useState(false);
-  const handleThemeChange = async (themeId) => {
-    setSavingTheme(true);
-    try {
-      await updateTheme(themeId);
-      toast.success("Theme updated");
-    } catch {
-      toast.error("Failed to save theme");
-    } finally {
-      setSavingTheme(false);
-    }
-  };
-  const load = useCallback(async () => {
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState(initialSort);
+
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, u, o, l, p, pu] = await Promise.all([
-        api.get("/admin/stats"),
-        api.get("/admin/users"),
-        api.get("/admin/businesses"),
-        api.get("/admin/security/lockouts"),
-        api.get("/admin/plans"),
-        api.get("/admin/users/pending"),
-      ]);
-      setStats(s.data);
-      setUsers(u.data);
-      setOutlets(o.data);
-      setLockouts(l.data);
-      setPlans(
-        (p.data?.plans || []).map((plan) => ({
-          ...plan,
-          features_text: (plan.features || []).join("\n"),
-        })),
-      );
-      setPendingUsers(pu.data || []);
+      const url = `${endpoint}?page=${data.page}&page_size=${data.page_size}&sort_by=${sort.key}&sort_dir=${sort.dir}&search=${encodeURIComponent(query)}`;
+      const { data: res } = await api.get(url);
+      setData((prev) => ({ ...prev, ...res }));
     } catch (err) {
       toast.error(
         formatApiErrorDetail(err.response?.data?.detail) || err.message,
@@ -140,169 +113,161 @@ export default function AdminPanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [endpoint, data.page, data.page_size, sort, query]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    fetchData();
+  }, [fetchData]);
 
-  const setPlan = async (userId, plan) => {
-    try {
-      await api.patch(`/admin/users/${userId}`, { plan });
-      toast.success(`Plan set to ${plan}`);
-      load();
-    } catch (err) {
-      toast.error(
-        formatApiErrorDetail(err.response?.data?.detail) || err.message,
-      );
-    }
+  return {
+    items: data.items,
+    total: data.total,
+    totalPages: Math.ceil(data.total / data.page_size),
+    page: data.page,
+    pageSize: data.page_size,
+    sort,
+    query,
+    setPage: (p) => setData((prev) => ({ ...prev, page: p })),
+    setPageSize: (ps) =>
+      setData((prev) => ({ ...prev, page_size: ps, page: 1 })),
+    setSearch: (q) => {
+      setQuery(q);
+      setData((prev) => ({ ...prev, page: 1 }));
+    },
+    toggleSort: (key) =>
+      setSort((prev) => ({
+        key,
+        dir: prev.key === key && prev.dir === "asc" ? "desc" : "asc",
+      })),
+    loading,
+    refresh: fetchData,
   };
+}
 
-  const setLocked = async (userId, is_locked) => {
-    try {
-      await api.patch(`/admin/users/${userId}`, { is_locked });
-      toast.success(is_locked ? "Account frozen" : "Account restored");
-      load();
-    } catch (err) {
-      toast.error(
-        formatApiErrorDetail(err.response?.data?.detail) || err.message,
-      );
-    }
-  };
+export default function AdminPanel() {
+  const { auth, logout } = useAuth();
+  const { catalog, setCatalog } = usePlans();
+  const navigate = useNavigate();
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true); // Re-added this line
 
-  const deleteOutlet = async (id) => {
-    try {
-      await api.delete(`/admin/businesses/${id}`);
-      toast.success("Outlet deleted");
-      load();
-    } catch (err) {
-      toast.error(
-        formatApiErrorDetail(err.response?.data?.detail) || err.message,
-      );
-    }
-  };
+  // Use server-side state
+  const usersTable = useServerTable("/admin/users");
+  const outletsTable = useServerTable("/admin/businesses");
+  const pendingUsersTable = useServerTable("/admin/users/pending");
+  const rejectedUsersTable = useServerTable("/admin/users/rejected", {
+    initialSort: { key: "rejected_at", dir: "desc" },
+  });
+  const [lockouts, setLockouts] = useState([]);
+  const lockoutsTable = useTableControls(lockouts, {
+    searchKeys: ["email"],
+    initialSort: { key: "failed_attempts", dir: "desc" },
+  });
+  const [plans, setPlans] = useState([]);
+  const [savingPlans, setSavingPlans] = useState({});
+  const [savingTheme, setSavingTheme] = useState(false);
+  const { theme, updateTheme } = useTheme();
+  const appAccentColor = theme?.vars?.["--app-accent"];
+  const t = THEMES.find((th) => th.id === theme.theme_id) || THEMES[0];
+  const c = t.vars;
 
-  const clearLockout = async (email) => {
-    try {
-      await api.delete(`/admin/security/lockouts/${encodeURIComponent(email)}`);
-      toast.success(`Unlocked ${email}`);
-      load();
-    } catch (err) {
-      toast.error(
-        formatApiErrorDetail(err.response?.data?.detail) || err.message,
-      );
-    }
-  };
+  const planStyle = (p) =>
+    p === "premium_plus"
+      ? "bg-foreground text-white border-foreground"
+      : p === "premium"
+        ? "bg-primary/15 text-primary border-primary/40"
+        : "bg-stone-100 text-stone-600 border-stone-200";
 
-  const approveUser = async (userId) => {
-    try {
-      await api.post(`/admin/users/${userId}/approve`);
-      toast.success("User approved");
-      load();
-    } catch (err) {
-      toast.error(
-        formatApiErrorDetail(err.response?.data?.detail) || err.message,
-      );
-    }
-  };
+  const planLabelText = (p) =>
+    p === "premium_plus" ? "Premium+" : p === "premium" ? "Premium" : "Free";
 
-  const rejectUser = async (userId) => {
-    try {
-      await api.post(`/admin/users/${userId}/reject`);
-      toast.success("User rejected");
-      load();
-    } catch (err) {
-      toast.error(
-        formatApiErrorDetail(err.response?.data?.detail) || err.message,
-      );
-    }
-  };
+  const handleThemeChange = useCallback(
+    async (themeId) => {
+      setSavingTheme(true);
+      try {
+        const { data } = await api.patch("/admin/theme", { theme_id: themeId });
+        const themeObj = THEMES.find((t) => t.id === data.theme_id);
+        updateTheme(data.theme_id);
+        toast.success(`Theme updated to ${themeObj?.name || data.theme_id}`);
+      } catch (err) {
+        toast.error(
+          formatApiErrorDetail(err.response?.data?.detail) || err.message,
+        );
+      } finally {
+        setSavingTheme(false);
+      }
+    },
+    [updateTheme],
+  );
 
-  const updatePlanDraft = (planId, key, value) => {
-    setPlans((prev) =>
-      prev.map((plan) =>
-        plan.id === planId ? { ...plan, [key]: value } : plan,
-      ),
-    );
-  };
+  const approveUser = useCallback(
+    async (userId) => {
+      try {
+        await api.post(`/admin/users/${userId}/approve`);
+        toast.success("User approved!");
+        pendingUsersTable.refresh();
+        usersTable.refresh();
+        loadData(); // Refresh stats, lockouts etc.
+      } catch (err) {
+        toast.error(
+          formatApiErrorDetail(err.response?.data?.detail) || err.message,
+        );
+      }
+    },
+    [pendingUsersTable, usersTable],
+  );
 
-  const savePlan = async (planId) => {
-    const plan = plans.find((item) => item.id === planId);
-    if (!plan) return;
-    setSavingPlans((prev) => ({ ...prev, [planId]: true }));
-    try {
-      const payload = {
-        max_outlets: Number(plan.max_outlets) || 1,
-        max_stations: Number(plan.max_stations) || 1,
-        max_tokens_per_day: Number(plan.max_tokens_per_day) || 1,
-        analytics_days: Number(plan.analytics_days) || 1,
-        can_manage_services: !!plan.can_manage_services,
-        max_services: Number(plan.max_services) || 0,
-        features: String(plan.features_text || "")
-          .split("\n")
-          .map((item) => item.trim())
-          .filter(Boolean),
-      };
-      const { data } = await api.patch(`/admin/plans/${planId}`, payload);
-      setPlans((prev) =>
-        prev.map((item) =>
-          item.id === planId
-            ? { ...data, features_text: (data.features || []).join("\n") }
-            : item,
-        ),
-      );
-      setCatalog((prev) => ({
-        ...prev,
-        [planId]: {
-          ...(prev?.[planId] || {}),
-          ...data,
-        },
-      }));
-      toast.success(`${data.label || data.name} updated`);
-    } catch (err) {
-      toast.error(
-        formatApiErrorDetail(err.response?.data?.detail) || err.message,
-      );
-    } finally {
-      setSavingPlans((prev) => ({ ...prev, [planId]: false }));
-    }
-  };
+  const rejectUser = useCallback(
+    async (userId) => {
+      try {
+        await api.post(`/admin/users/${userId}/reject`);
+        toast.success("User rejected!");
+        pendingUsersTable.refresh();
+        rejectedUsersTable.refresh();
+        loadData(); // Refresh stats, lockouts etc.
+      } catch (err) {
+        toast.error(
+          formatApiErrorDetail(err.response?.data?.detail) || err.message,
+        );
+      }
+    },
+    [pendingUsersTable, rejectedUsersTable],
+  );
 
   const handleLogout = async () => {
     await logout();
     navigate("/");
   };
 
-  // Table controls — search, sort, pagination
-  const usersTable = useTableControls(users, {
-    searchKeys: ["email", "name", "plan"],
-    initialSort: { key: "created_at", dir: "desc" },
-  });
-  const outletsTable = useTableControls(outlets, {
-    searchKeys: [
-      "business_name",
-      "owner_email",
-      "owner_name",
-      "city",
-      "state",
-      "pincode",
-    ],
-    initialSort: { key: "business_name", dir: "asc" },
-  });
-  const lockoutsTable = useTableControls(lockouts, {
-    searchKeys: ["email"],
-    initialSort: { key: "failed_attempts", dir: "desc" },
-  });
+  const loadData = useCallback(async () => {
+    setLoading(true); // Keep local loading state for stats and plans, etc.
+    try {
+      const [s, l, p] = await Promise.all([
+        api.get("/admin/stats"),
+        api.get("/admin/security/lockouts"),
+        api.get("/admin/plans"),
+      ]);
+      setStats(s.data);
+      setLockouts(l.data);
+      setPlans(
+        (p.data?.plans || []).map((plan) => ({
+          ...plan,
+          features_text: (plan.features || []).join("\n"),
+        })),
+      );
+      // Removed calls to pendingUsersTable.refresh() and rejectedUsersTable.refresh()
+    } catch (err) {
+      toast.error(
+        formatApiErrorDetail(err.response?.data?.detail) || err.message,
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []); // Removed pendingUsersTable, rejectedUsersTable from dependencies
 
-  const planStyle = (p) =>
-    p === "premium_plus"
-      ? "bg-[#2C302E] text-white border-[#2C302E]"
-      : p === "premium"
-        ? "bg-[#C47C5C]/15 text-[#A86246] border-[#C47C5C]/40"
-        : "bg-stone-100 text-stone-600 border-stone-200";
-
-  const planLabelText = (p) =>
-    p === "premium_plus" ? "Premium+" : p === "premium" ? "Premium" : "Free";
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   return (
     <div
@@ -319,14 +284,13 @@ export default function AdminPanel() {
         {" "}
         <div className="w-full px-5 py-3 flex flex-wrap items-center gap-3">
           <Link to="/" className="flex items-center gap-2">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-full text-white font-serif-display"
-              style={{ background: c["--app-text"] }}
+            <span
+              className="flex h-8 w-8 items-center justify-center"
             >
-              g
-            </div>
+              <BrandLogo compact color={appAccentColor} />
+            </span>
             <span className="text-sm font-semibold">Go-Next</span>
-            <span className="hidden sm:inline-flex items-center gap-1 rounded-full border border-[#7D9276]/40 bg-[#7D9276]/10 px-3 py-0.5 text-[10px] uppercase tracking-[0.22em] text-[#4c6547]">
+            <span className="hidden sm:inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-3 py-0.5 text-[10px] uppercase tracking-[0.22em] text-success">
               <Shield className="h-3 w-3" /> Admin
             </span>
           </Link>
@@ -335,7 +299,7 @@ export default function AdminPanel() {
               variant="ghost"
               size="sm"
               className="rounded-full text-stone-600"
-              onClick={load}
+              onClick={loadData}
               data-testid="admin-refresh"
             >
               Refresh
@@ -399,7 +363,7 @@ export default function AdminPanel() {
           <Stat
             label="Outlets"
             value={stats?.total_businesses ?? "—"}
-            accent="text-[#A86246]"
+            accent="text-primary"
             testid="admin-stat-outlets"
           />
           <Stat
@@ -410,7 +374,7 @@ export default function AdminPanel() {
           <Stat
             label="Completed today"
             value={stats?.completed_today ?? "—"}
-            accent="text-[#4c6547]"
+            accent="text-success"
             testid="admin-stat-today"
           />
         </div>
@@ -419,40 +383,47 @@ export default function AdminPanel() {
           <TabsList className="bg-white border border-stone-200 rounded-full p-1">
             <TabsTrigger
               value="pending"
-              className="rounded-full data-[state=active]:bg-[#F4EFE8] data-[state=active]:text-[#A86246]"
+              className="rounded-full data-[state=active]:bg-secondary data-[state=active]:text-primary"
               data-testid="admin-tab-pending"
             >
               <Shield className="h-3.5 w-3.5 mr-1.5" /> Pending
-              {pendingUsers.length > 0 && (
-                <span className="ml-1.5 h-4 w-4 rounded-full bg-[#A86246] text-[10px] text-white flex items-center justify-center">
-                  {pendingUsers.length}
+              {pendingUsersTable.total > 0 && (
+                <span className="ml-1.5 h-4 w-4 rounded-full bg-primary text-[10px] text-white flex items-center justify-center">
+                  {pendingUsersTable.total}
                 </span>
               )}
             </TabsTrigger>
             <TabsTrigger
+              value="rejected"
+              className="rounded-full data-[state=active]:bg-secondary data-[state=active]:text-primary"
+              data-testid="admin-tab-rejected"
+            >
+              <XCircle className="h-3.5 w-3.5 mr-1.5" /> Rejected
+            </TabsTrigger>
+            <TabsTrigger
               value="users"
-              className="rounded-full data-[state=active]:bg-[#F4EFE8] data-[state=active]:text-[#A86246]"
+              className="rounded-full data-[state=active]:bg-secondary data-[state=active]:text-primary"
               data-testid="admin-tab-users"
             >
               <Users className="h-3.5 w-3.5 mr-1.5" /> Owners
             </TabsTrigger>
             <TabsTrigger
               value="outlets"
-              className="rounded-full data-[state=active]:bg-[#F4EFE8] data-[state=active]:text-[#A86246]"
+              className="rounded-full data-[state=active]:bg-secondary data-[state=active]:text-primary"
               data-testid="admin-tab-outlets"
             >
               <Building2 className="h-3.5 w-3.5 mr-1.5" /> Outlets
             </TabsTrigger>
             <TabsTrigger
               value="overview"
-              className="rounded-full data-[state=active]:bg-[#F4EFE8] data-[state=active]:text-[#A86246]"
+              className="rounded-full data-[state=active]:bg-secondary data-[state=active]:text-primary"
               data-testid="admin-tab-overview"
             >
               <LayoutDashboard className="h-3.5 w-3.5 mr-1.5" /> Overview
             </TabsTrigger>
             <TabsTrigger
               value="security"
-              className="rounded-full data-[state=active]:bg-[#F4EFE8] data-[state=active]:text-[#A86246]"
+              className="rounded-full data-[state=active]:bg-secondary data-[state=active]:text-primary"
               data-testid="admin-tab-security"
             >
               <ShieldCheck className="h-3.5 w-3.5 mr-1.5" /> Security
@@ -462,14 +433,14 @@ export default function AdminPanel() {
             </TabsTrigger>
             <TabsTrigger
               value="theme"
-              className="rounded-full data-[state=active]:bg-[#F4EFE8] data-[state=active]:text-[#A86246]"
+              className="rounded-full data-[state=active]:bg-secondary data-[state=active]:text-primary"
               data-testid="admin-tab-theme"
             >
               <Palette className="h-3.5 w-3.5 mr-1.5" /> Theme
             </TabsTrigger>
             <TabsTrigger
               value="plans"
-              className="rounded-full data-[state=active]:bg-[#F4EFE8] data-[state=active]:text-[#A86246]"
+              className="rounded-full data-[state=active]:bg-secondary data-[state=active]:text-primary"
               data-testid="admin-tab-plans"
             >
               <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" /> Plans
@@ -481,59 +452,219 @@ export default function AdminPanel() {
               className="rounded-2xl border border-stone-200 bg-white overflow-hidden"
               data-testid="admin-pending-table"
             >
-              {pendingUsers.length === 0 ? (
-                <div className="p-12 text-center text-stone-500">
-                  <Shield className="h-12 w-12 mx-auto mb-4 text-stone-300" />
-                  <p>No pending registrations</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead>Owner</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Plan</TableHead>
-                      <TableHead>Joined</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+              <TableToolbar
+                query={pendingUsersTable.query}
+                onQueryChange={pendingUsersTable.setSearch}
+                pageSize={pendingUsersTable.pageSize}
+                onPageSizeChange={pendingUsersTable.setPageSize}
+                total={pendingUsersTable.total}
+                placeholder="Search by email or name…"
+                testidPrefix="pending"
+              />
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <SortableHead
+                      label="Owner"
+                      sortKey="name"
+                      sort={pendingUsersTable.sort}
+                      onToggle={pendingUsersTable.toggleSort}
+                    />
+                    <SortableHead
+                      label="Email"
+                      sortKey="email"
+                      sort={pendingUsersTable.sort}
+                      onToggle={pendingUsersTable.toggleSort}
+                    />
+                    <SortableHead
+                      label="Plan"
+                      sortKey="plan"
+                      sort={pendingUsersTable.sort}
+                      onToggle={pendingUsersTable.toggleSort}
+                    />
+                    <SortableHead
+                      label="Joined"
+                      sortKey="created_at"
+                      sort={pendingUsersTable.sort}
+                      onToggle={pendingUsersTable.toggleSort}
+                    />
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendingUsersTable.loading && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="text-center py-10 text-stone-500"
+                      >
+                        Loading…
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pendingUsers.map((u) => (
-                      <TableRow key={u.id}>
-                        <TableCell className="font-medium">{u.name}</TableCell>
-                        <TableCell>{u.email}</TableCell>
-                        <TableCell>
-                          <span className={planStyle(u.plan)}>
-                            {planLabelText(u.plan)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-stone-500">
-                          {u.created_at
-                            ? new Date(u.created_at).toLocaleDateString()
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            className="mr-2 rounded-full bg-[#4c6547] hover:bg-[#3d5337] text-white"
-                            onClick={() => approveUser(u.id)}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="rounded-full border-stone-300"
-                            onClick={() => rejectUser(u.id)}
-                          >
-                            Reject
-                          </Button>
+                  )}
+                  {!pendingUsersTable.loading &&
+                    pendingUsersTable.total === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={5}
+                          className="text-center py-10 text-stone-500"
+                        >
+                          {pendingUsersTable.items.length === 0
+                            ? "No pending registrations."
+                            : "No pending registrations match that search."}
                         </TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
+                    )}
+                  {pendingUsersTable.items.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell className="font-medium">{u.name}</TableCell>
+                      <TableCell>{u.email}</TableCell>
+                      <TableCell>
+                        <span className={planStyle(u.plan)}>
+                          {planLabelText(u.plan)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-stone-500">
+                        {u.created_at
+                          ? new Date(u.created_at).toLocaleDateString()
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          className="mr-2 rounded-full bg-success hover:bg-success/90 text-white"
+                          onClick={() => approveUser(u.id)}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-full border-stone-300"
+                          onClick={() => rejectUser(u.id)}
+                        >
+                          Reject
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <TablePagination
+                page={pendingUsersTable.page}
+                totalPages={pendingUsersTable.totalPages}
+                onPageChange={pendingUsersTable.setPage}
+                testidPrefix="pending"
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="rejected" className="mt-6">
+            <div
+              className="rounded-2xl border border-stone-200 bg-white overflow-hidden"
+              data-testid="admin-rejected-table"
+            >
+              <TableToolbar
+                query={rejectedUsersTable.query}
+                onQueryChange={rejectedUsersTable.setSearch}
+                pageSize={rejectedUsersTable.pageSize}
+                onPageSizeChange={rejectedUsersTable.setPageSize}
+                total={rejectedUsersTable.total}
+                placeholder="Search by email or name…"
+                testidPrefix="rejected"
+              />
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <SortableHead
+                      label="Owner"
+                      sortKey="name"
+                      sort={rejectedUsersTable.sort}
+                      onToggle={rejectedUsersTable.toggleSort}
+                    />
+                    <SortableHead
+                      label="Email"
+                      sortKey="email"
+                      sort={rejectedUsersTable.sort}
+                      onToggle={rejectedUsersTable.toggleSort}
+                    />
+                    <SortableHead
+                      label="Plan"
+                      sortKey="plan"
+                      sort={rejectedUsersTable.sort}
+                      onToggle={rejectedUsersTable.toggleSort}
+                    />
+                    <SortableHead
+                      label="Joined"
+                      sortKey="created_at"
+                      sort={rejectedUsersTable.sort}
+                      onToggle={rejectedUsersTable.toggleSort}
+                    />
+                    <SortableHead
+                      label="Rejected"
+                      sortKey="rejected_at"
+                      sort={rejectedUsersTable.sort}
+                      onToggle={rejectedUsersTable.toggleSort}
+                    />
+                    <TableHead className="text-center">Outlets</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rejectedUsersTable.loading && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={6}
+                        className="text-center py-10 text-stone-500"
+                      >
+                        Loading…
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!rejectedUsersTable.loading &&
+                    rejectedUsersTable.total === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={6}
+                          className="text-center py-10 text-stone-500"
+                        >
+                          {rejectedUsersTable.items.length === 0
+                            ? "No rejected registrations."
+                            : "No rejected registrations match that search."}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  {rejectedUsersTable.items.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell className="font-medium">{u.name}</TableCell>
+                      <TableCell>{u.email}</TableCell>
+                      <TableCell>
+                        <span className={planStyle(u.plan)}>
+                          {planLabelText(u.plan)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-stone-500">
+                        {u.created_at
+                          ? new Date(u.created_at).toLocaleDateString()
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-stone-500">
+                        {u.rejected_at
+                          ? new Date(u.rejected_at).toLocaleDateString()
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {u.outlet_count}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <TablePagination
+                page={rejectedUsersTable.page}
+                totalPages={rejectedUsersTable.totalPages}
+                onPageChange={rejectedUsersTable.setPage}
+                testidPrefix="rejected"
+              />
             </div>
           </TabsContent>
 
@@ -589,7 +720,7 @@ export default function AdminPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {loading && (
+                  {usersTable.loading && (
                     <TableRow>
                       <TableCell
                         colSpan={6}
@@ -599,32 +730,40 @@ export default function AdminPanel() {
                       </TableCell>
                     </TableRow>
                   )}
-                  {!loading && usersTable.total === 0 && (
+                  {!usersTable.loading && usersTable.total === 0 && (
                     <TableRow>
                       <TableCell
                         colSpan={6}
                         className="text-center py-10 text-stone-500"
                       >
-                        {users.length === 0
+                        {usersTable.items.length === 0
                           ? "No owners yet."
                           : "No owners match that search."}
                       </TableCell>
                     </TableRow>
                   )}
-                  {usersTable.visible.map((u) => (
+                  {usersTable.items.map((u) => (
                     <TableRow key={u.id} data-testid={`admin-user-row-${u.id}`}>
-                      <TableCell className="font-medium">
-                        {u.name || "—"}
-                        {u.is_locked && (
-                          <Badge className="ml-2 rounded-full border font-normal bg-red-50 text-red-600 border-red-100">
-                            Frozen
-                          </Badge>
-                        )}
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-stone-900">
+                            {u.name || "—"}
+                          </span>
+                          {u.is_locked ? (
+                            <Badge className="w-fit mt-1 rounded-full border font-normal bg-red-50 text-red-600 border-red-100 text-[10px]">
+                              Frozen Account
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-stone-500">
+                              Owner
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
-                      <TableCell className="text-stone-600">
+                      <TableCell className="text-stone-600 text-sm">
                         {u.email}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center font-medium">
                         {u.outlet_count}
                       </TableCell>
                       <TableCell>
@@ -645,7 +784,7 @@ export default function AdminPanel() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="rounded-full border-red-200 text-red-700"
+                              className="rounded-full border-red-200 text-red-700 hover:bg-red-50"
                               onClick={() => setLocked(u.id, false)}
                               data-testid={`unlock-account-${u.id}`}
                             >
@@ -710,19 +849,43 @@ export default function AdminPanel() {
               className="rounded-2xl border border-stone-200 bg-white overflow-hidden"
               data-testid="admin-outlets-table"
             >
+              <TableToolbar
+                query={outletsTable.query}
+                onQueryChange={outletsTable.setSearch}
+                pageSize={outletsTable.pageSize}
+                onPageSizeChange={outletsTable.setPageSize}
+                total={outletsTable.total}
+                placeholder="Search by outlet or city…"
+                testidPrefix="outlets"
+              />
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead>Outlet</TableHead>
-                    <TableHead>Owner</TableHead>
-                    <TableHead>Location</TableHead>
+                    <SortableHead
+                      label="Outlet"
+                      sortKey="business_name"
+                      sort={outletsTable.sort}
+                      onToggle={outletsTable.toggleSort}
+                    />
+                    <SortableHead
+                      label="Owner"
+                      sortKey="owner_name"
+                      sort={outletsTable.sort}
+                      onToggle={outletsTable.toggleSort}
+                    />
+                    <SortableHead
+                      label="Location"
+                      sortKey="city"
+                      sort={outletsTable.sort}
+                      onToggle={outletsTable.toggleSort}
+                    />
                     <TableHead className="text-center">Stations</TableHead>
                     <TableHead>Online</TableHead>
                     <TableHead className="text-right pr-5">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {loading && (
+                  {outletsTable.loading && (
                     <TableRow>
                       <TableCell
                         colSpan={6}
@@ -732,7 +895,7 @@ export default function AdminPanel() {
                       </TableCell>
                     </TableRow>
                   )}
-                  {!loading && outlets.length === 0 && (
+                  {!outletsTable.loading && outletsTable.total === 0 && (
                     <TableRow>
                       <TableCell
                         colSpan={6}
@@ -742,38 +905,51 @@ export default function AdminPanel() {
                       </TableCell>
                     </TableRow>
                   )}
-                  {outlets.map((b) => (
+                  {outletsTable.items.map((b) => (
                     <TableRow
                       key={b.id}
                       data-testid={`admin-outlet-row-${b.id}`}
                     >
                       <TableCell>
-                        <p className="font-medium">{b.business_name}</p>
-                        <p className="text-xs text-stone-500 capitalize">
-                          {b.business_type}
-                        </p>
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-full bg-stone-100 flex items-center justify-center text-xs font-medium text-stone-500">
+                            {b.business_name.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-stone-900">
+                              {b.business_name}
+                            </span>
+                            <span className="text-xs text-stone-500 capitalize">
+                              {b.business_type}
+                            </span>
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <p className="text-sm">{b.owner_name || "—"}</p>
-                        <p className="text-xs text-stone-500">
-                          {b.owner_email}
-                        </p>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">
+                            {b.owner_name || "—"}
+                          </span>
+                          <span className="text-xs text-stone-500">
+                            {b.owner_email}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell className="text-stone-600 text-sm">
                         {[b.city, b.state, b.pincode]
                           .filter(Boolean)
                           .join(", ") || "—"}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center font-medium">
                         {b.total_chairs}
                       </TableCell>
                       <TableCell>
-                        <span
-                          className={`inline-flex h-2 w-2 rounded-full ${b.is_online ? "bg-[#7D9276]" : "bg-stone-400"}`}
-                        />
-                        <span className="ml-2 text-xs text-stone-600">
+                        <Badge
+                          variant={b.is_online ? "default" : "secondary"}
+                          className={`rounded-full border font-normal ${b.is_online ? "bg-success/10 text-success border-success/20" : "bg-stone-100 text-stone-600 border-stone-200"}`}
+                        >
                           {b.is_online ? "Accepting" : "Paused"}
-                        </span>
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-right pr-5">
                         <div className="flex justify-end gap-2">
@@ -786,7 +962,7 @@ export default function AdminPanel() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="rounded-full text-stone-600"
+                              className="rounded-full text-stone-600 hover:text-stone-900"
                               title="Open TV display"
                             >
                               <Tv className="h-4 w-4" />
@@ -797,7 +973,7 @@ export default function AdminPanel() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="rounded-full text-red-600"
+                                className="rounded-full text-red-600 hover:bg-red-50 hover:text-red-700"
                                 data-testid={`admin-delete-outlet-${b.id}`}
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -850,7 +1026,7 @@ export default function AdminPanel() {
               <Stat
                 label="Premium owners"
                 value={stats?.premium_users ?? "—"}
-                accent="text-[#A86246]"
+                accent="text-primary"
               />
               <Stat
                 label="Conversion"
@@ -872,7 +1048,7 @@ export default function AdminPanel() {
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 px-5 py-4">
                 <div>
                   <h3 className="font-serif-display text-xl leading-none flex items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 text-[#4c6547]" /> Account
+                    <ShieldCheck className="h-4 w-4 text-success" /> Account
                     lockouts
                   </h3>
                   <p className="mt-1 text-xs text-stone-500">
@@ -926,7 +1102,7 @@ export default function AdminPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {loading && (
+                  {lockoutsTable.loading && (
                     <TableRow>
                       <TableCell
                         colSpan={5}
@@ -936,7 +1112,7 @@ export default function AdminPanel() {
                       </TableCell>
                     </TableRow>
                   )}
-                  {!loading && lockoutsTable.total === 0 && (
+                  {!lockoutsTable.loading && lockoutsTable.total === 0 && (
                     <TableRow>
                       <TableCell
                         colSpan={5}
@@ -1019,7 +1195,7 @@ export default function AdminPanel() {
                       className={`group relative text-left rounded-2xl border-2 p-4 transition-all focus:outline-none
               ${
                 isActive
-                  ? "border-[#C47C5C] shadow-md"
+                  ? "border-primary shadow-md"
                   : "border-stone-200 hover:border-stone-300"
               }`}
                     >
@@ -1044,7 +1220,7 @@ export default function AdminPanel() {
 
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="font-semibold text-sm text-[#2C302E]">
+                          <p className="font-semibold text-sm text-foreground">
                             {t.name}
                           </p>
                           <p className="text-xs text-stone-500 mt-0.5">
@@ -1055,7 +1231,7 @@ export default function AdminPanel() {
                           className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider font-medium
                 ${
                   t.mode === "dark"
-                    ? "bg-[#2C302E] text-white"
+                    ? "bg-foreground text-white"
                     : "bg-stone-100 text-stone-600"
                 }`}
                         >
@@ -1064,7 +1240,7 @@ export default function AdminPanel() {
                       </div>
 
                       {isActive && (
-                        <div className="absolute top-3 right-3 h-5 w-5 rounded-full bg-[#C47C5C] flex items-center justify-center">
+                        <div className="absolute top-3 right-3 h-5 w-5 rounded-full bg-primary flex items-center justify-center">
                           <svg
                             className="h-3 w-3 text-white"
                             fill="none"
@@ -1255,7 +1431,7 @@ export default function AdminPanel() {
                     <Button
                       onClick={() => savePlan(plan.id)}
                       disabled={!!savingPlans[plan.id]}
-                      className="rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white"
+                      className="rounded-full bg-foreground hover:bg-foreground/90 text-white"
                       data-testid={`save-plan-${plan.id}`}
                     >
                       {savingPlans[plan.id] ? "Saving…" : "Save changes"}

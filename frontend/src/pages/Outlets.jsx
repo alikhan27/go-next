@@ -68,12 +68,12 @@ export default function Outlets() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6]">
+    <div className="min-h-screen bg-background">
       <DashboardHeader activeTab="queue" />
       <main className="mx-auto max-w-6xl px-5 py-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Outlets</p>
+            <p className="text-[11px] uppercase tracking-[0.26em] text-primary">Outlets</p>
             <h1 className="font-serif-display text-4xl sm:text-5xl mt-2 leading-none">Your locations</h1>
             <p className="mt-2 text-stone-600 text-sm">
               {isPremium
@@ -84,7 +84,7 @@ export default function Outlets() {
           <Dialog open={open} onOpenChange={(v) => !atLimit && setOpen(v)}>
             <DialogTrigger asChild>
               <Button
-                className="rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white press disabled:opacity-40"
+                className="rounded-full bg-foreground hover:bg-foreground/90 text-white press disabled:opacity-40"
                 disabled={atLimit}
                 data-testid="new-outlet-btn"
                 title={atLimit && !isPremium ? "Upgrade to Premium to add more outlets" : undefined}
@@ -131,19 +131,19 @@ export default function Outlets() {
                       onChange={(e) => set("city")(e.target.value)} data-testid="new-outlet-city" />
                   </div>
                   <div>
-                    <Label>State <span className="text-[#A86246]">*</span></Label>
+                    <Label>State <span className="text-primary">*</span></Label>
                     <Input required className="mt-1.5 h-11" value={form.state}
                       onChange={(e) => set("state")(e.target.value)} data-testid="new-outlet-state" />
                   </div>
                 </div>
                 <div>
-                  <Label>Pincode <span className="text-[#A86246]">*</span></Label>
+                  <Label>Pincode <span className="text-primary">*</span></Label>
                   <Input required className="mt-1.5 h-11" inputMode="numeric" value={form.pincode}
                     onChange={(e) => set("pincode")(e.target.value)} data-testid="new-outlet-pincode" />
                 </div>
                 <DialogFooter>
                   <Button type="submit" disabled={saving}
-                    className="rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white h-11 px-6"
+                    className="rounded-full bg-foreground hover:bg-foreground/90 text-white h-11 px-6"
                     data-testid="new-outlet-submit">
                     {saving ? "Creating…" : "Create outlet"}
                   </Button>
@@ -154,13 +154,13 @@ export default function Outlets() {
         </div>
 
         {!isPremium && atLimit && (
-          <div className="mt-8 rounded-2xl border border-[#C47C5C]/40 bg-[#F4EFE8]/60 p-5 flex flex-wrap items-center justify-between gap-3" data-testid="upgrade-banner">
+          <div className="mt-8 rounded-2xl border border-primary/40 bg-secondary/60 p-5 flex flex-wrap items-center justify-between gap-3" data-testid="upgrade-banner">
             <div>
               <p className="font-serif-display text-xl leading-tight">You&apos;re at your Free plan limit.</p>
               <p className="mt-1 text-sm text-stone-600">Upgrade to Premium for 3 outlets, custom services with accurate ETAs, and a 90-day analytics history.</p>
             </div>
             <Link to="/#pricing" data-testid="upgrade-banner-cta">
-              <Button className="rounded-full bg-[#C47C5C] hover:bg-[#A86246] text-white h-10 px-5 press">
+              <Button className="rounded-full bg-primary hover:bg-primary/90 text-white h-10 px-5 press">
                 See pricing
               </Button>
             </Link>
@@ -181,10 +181,10 @@ export default function Outlets() {
                 data-testid={`outlet-card-${b.id}`}>
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.22em] text-[#A86246]">{b.business_type}</p>
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-primary">{b.business_type}</p>
                     <h3 className="font-serif-display text-2xl leading-tight mt-1">{b.business_name}</h3>
                   </div>
-                  <span className={`h-2 w-2 mt-2 rounded-full ${b.is_online ? "bg-[#7D9276]" : "bg-stone-400"}`} />
+                  <span className={`h-2 w-2 mt-2 rounded-full ${b.is_online ? "bg-success" : "bg-stone-400"}`} />
                 </div>
                 <p className="mt-3 text-sm text-stone-600 flex items-start gap-1.5">
                   <MapPin className="h-3.5 w-3.5 mt-0.5 flex-none" />
@@ -197,7 +197,7 @@ export default function Outlets() {
                 </div>
                 <div className="mt-6 flex items-center gap-2">
                   <Link to={`/dashboard/${b.id}`} className="flex-1" data-testid={`open-outlet-${b.id}`}>
-                    <Button className="w-full rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white">
+                    <Button className="w-full rounded-full bg-foreground hover:bg-foreground/90 text-white">
                       Open <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
                     </Button>
                   </Link>

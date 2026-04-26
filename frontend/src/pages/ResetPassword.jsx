@@ -49,7 +49,7 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] flex items-center justify-center px-5 py-10">
+    <div className="min-h-screen bg-background flex items-center justify-center px-5 py-10">
       <div className="w-full max-w-md">
         <Link to="/login" className="text-sm text-stone-500 hover:text-stone-800 inline-flex items-center gap-1" data-testid="reset-back">
           <ArrowLeft className="h-3.5 w-3.5" /> Back to sign in
@@ -75,7 +75,7 @@ export default function ResetPassword() {
                 onChange={(e) => setConfirm(e.target.value)} data-testid="reset-confirm-password" />
             </div>
             <Button type="submit" disabled={loading || !token}
-              className="w-full h-11 rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white press"
+              className="w-full h-11 rounded-full bg-foreground hover:bg-foreground/90 text-white press"
               data-testid="reset-submit">
               {loading ? "Updating…" : "Update password"}
             </Button>
@@ -86,13 +86,13 @@ export default function ResetPassword() {
         ) : (
           <div className="mt-8 rounded-2xl border border-stone-200 bg-white p-6" data-testid="reset-success">
             <div className="text-center">
-              <CheckCircle2 className="h-10 w-10 text-[#7D9276] mx-auto" />
+              <CheckCircle2 className="h-10 w-10 text-success mx-auto" />
               <p className="font-serif-display text-2xl mt-3">Password updated</p>
               <p className="mt-1 text-sm text-stone-600">You can now sign in with your new password.</p>
             </div>
 
             <Button onClick={() => navigate("/login")}
-              className="mt-6 w-full h-11 rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white press"
+              className="mt-6 w-full h-11 rounded-full bg-foreground hover:bg-foreground/90 text-white press"
               data-testid="reset-to-login">
               Go to sign in
             </Button>

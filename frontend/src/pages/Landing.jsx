@@ -36,19 +36,19 @@ export default function Landing() {
   const premiumPlusPlan = catalog.premium_plus;
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] text-[#2C302E]">
+    <div className="min-h-screen bg-background text-foreground">
       <Navbar transparent />
 
       <section className="warm-hero-gradient grain relative">
         <div className="relative mx-auto max-w-6xl px-5 pt-14 pb-20 lg:pt-24 lg:pb-28">
           <div className="grid gap-10 lg:grid-cols-12 lg:gap-12">
             <div className="lg:col-span-7">
-              <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]" data-testid="hero-eyebrow">
+              <p className="text-[11px] uppercase tracking-[0.26em] text-primary" data-testid="hero-eyebrow">
                 Go-Next · Organic Queue Platform
               </p>
               <h1 className="font-serif-display mt-4 text-4xl sm:text-5xl lg:text-6xl leading-[1.05] tracking-tight">
                 A calmer way<br />
-                <span className="italic text-[#A86246]">to keep every chair busy.</span>
+                <span className="italic text-primary">to keep every chair busy.</span>
               </h1>
               <p className="mt-6 max-w-xl text-base sm:text-lg leading-relaxed text-stone-600">
                 Built for real service floors: morning rush, weekend peaks, and the in-between walk-ins.
@@ -57,7 +57,7 @@ export default function Landing() {
 
               <div className="mt-8 flex flex-wrap gap-3 stagger-in">
                 <Link to="/register" data-testid="hero-cta-register">
-                  <Button className="rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white h-12 px-7 press">
+                  <Button className="rounded-full bg-foreground hover:bg-foreground/90 text-white h-12 px-7 press">
                     Start free
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
@@ -91,14 +91,14 @@ export default function Landing() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-[10px] uppercase tracking-[0.22em] text-stone-500">Now serving</p>
-                      <p className="font-serif-display text-2xl text-[#2C302E]">Token · 014</p>
+                      <p className="font-serif-display text-2xl text-foreground">Token · 014</p>
                     </div>
-                    <span className="rounded-full bg-[#7D9276]/15 px-3 py-1 text-xs font-medium text-[#4c6547]" data-testid="hero-badge-live">
+                    <span className="rounded-full bg-success/15 px-3 py-1 text-xs font-medium text-success" data-testid="hero-badge-live">
                       Live
                     </span>
                   </div>
                   <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-stone-200">
-                    <div className="h-full w-3/5 bg-gradient-to-r from-[#E3A587] to-[#C47C5C]" />
+                    <div className="h-full w-3/5 bg-gradient-to-r from-primary/70 to-primary" />
                   </div>
                   <p className="mt-2 text-xs text-stone-600">3 ahead of you · ~8 min wait</p>
                 </div>
@@ -110,7 +110,7 @@ export default function Landing() {
 
       <section className="mx-auto max-w-6xl px-5 py-20 lg:py-28">
         <div className="max-w-3xl">
-          <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Why Go-Next</p>
+          <p className="text-[11px] uppercase tracking-[0.26em] text-primary">Why Go-Next</p>
           <h2 className="font-serif-display mt-3 text-3xl sm:text-4xl lg:text-5xl leading-tight">
             Thoughtfully quiet software. <br />
             <span className="italic">Built around the service floor.</span>
@@ -124,7 +124,7 @@ export default function Landing() {
               className="group rounded-2xl border border-stone-200 bg-white p-7 transition press hover:-translate-y-1 hover:shadow-lg"
               data-testid={`feature-${f.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F4EFE8] text-[#A86246]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-primary">
                 <f.icon className="h-5 w-5" />
               </div>
               <h3 className="font-serif-display mt-5 text-2xl leading-tight">{f.title}</h3>
@@ -134,10 +134,10 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="bg-[#F4EFE8]">
+      <section className="bg-secondary">
         <div className="mx-auto grid max-w-6xl gap-10 px-5 py-20 md:grid-cols-[1.1fr_0.9fr] md:items-center lg:py-28">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">How it works</p>
+            <p className="text-[11px] uppercase tracking-[0.26em] text-primary">How it works</p>
             <h2 className="font-serif-display mt-3 text-3xl sm:text-4xl lg:text-5xl leading-tight">
               Four steady steps <br />
               <span className="italic">from walk-in to “thank you.”</span>
@@ -150,7 +150,7 @@ export default function Landing() {
                 { t: "Everyone keeps rhythm", b: "Stations stay full. Guests stay informed. No double bookings." },
               ].map((s, i) => (
                 <li key={s.t} className="flex gap-5">
-                  <div className="flex h-10 w-10 flex-none items-center justify-center rounded-full border border-[#C47C5C] text-[#A86246] font-serif-display text-lg">
+                  <div className="flex h-10 w-10 flex-none items-center justify-center rounded-full border border-primary text-primary font-serif-display text-lg">
                     {i + 1}
                   </div>
                   <div>
@@ -176,7 +176,7 @@ export default function Landing() {
       <section id="pricing" className="bg-white border-t border-stone-200">
         <div className="mx-auto max-w-6xl px-5 py-20 lg:py-28">
           <div className="max-w-3xl">
-            <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Pricing</p>
+            <p className="text-[11px] uppercase tracking-[0.26em] text-primary">Pricing</p>
             <h2 className="font-serif-display mt-3 text-3xl sm:text-4xl lg:text-5xl leading-tight">
               Start free. <span className="italic">Grow when you&apos;re ready.</span>
             </h2>
@@ -187,7 +187,7 @@ export default function Landing() {
 
           <div className="mt-12 grid gap-6 md:grid-cols-3 stagger-in">
             {/* Free */}
-            <div className="rounded-3xl border border-stone-200 bg-[#F9F8F6] p-8" data-testid="pricing-free">
+            <div className="rounded-3xl border border-stone-200 bg-background p-8" data-testid="pricing-free">
               <div className="flex items-baseline justify-between">
                 <p className="text-[11px] uppercase tracking-[0.26em] text-stone-500">Free</p>
                 <span className="rounded-full bg-stone-200 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-stone-600">for new salons</span>
@@ -199,7 +199,7 @@ export default function Landing() {
                   ...(freePlan?.features || []),
                 ].map((f) => (
                   <li key={f} className="flex items-start gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-[#7D9276] flex-none mt-0.5" />
+                    <CheckCircle2 className="h-4 w-4 text-success flex-none mt-0.5" />
                     <span className="text-stone-700">{f}</span>
                   </li>
                 ))}
@@ -212,28 +212,28 @@ export default function Landing() {
             </div>
 
             {/* Premium */}
-            <div className="rounded-3xl border-2 border-[#C47C5C]/60 bg-white p-8 shadow-sm relative overflow-hidden" data-testid="pricing-premium">
+            <div className="rounded-3xl border-2 border-primary/60 bg-white p-8 shadow-sm relative overflow-hidden" data-testid="pricing-premium">
               <div
                 className="absolute inset-0 opacity-60 pointer-events-none"
                 style={{ background: "radial-gradient(400px 200px at 90% -10%, rgba(196,124,92,0.18), transparent 60%)" }}
               />
               <div className="relative">
                 <div className="flex items-baseline justify-between">
-                  <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Premium</p>
-                  <span className="rounded-full bg-[#C47C5C] text-white px-3 py-1 text-[10px] uppercase tracking-[0.22em]">Most popular</span>
+                  <p className="text-[11px] uppercase tracking-[0.26em] text-primary">Premium</p>
+                  <span className="rounded-full bg-primary text-white px-3 py-1 text-[10px] uppercase tracking-[0.22em]">Most popular</span>
                 </div>
                 <p className="font-serif-display text-5xl mt-4">${premiumPlan?.price_monthly ?? 19}<span className="text-base text-stone-500"> /mo</span></p>
                 <p className="text-sm text-stone-500">per owner · cancel anytime</p>
                 <ul className="mt-7 space-y-3 text-sm">
                   {(premiumPlan?.features || []).map((f) => (
                     <li key={f} className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-[#C47C5C] flex-none mt-0.5" />
+                      <CheckCircle2 className="h-4 w-4 text-primary flex-none mt-0.5" />
                       <span className="text-stone-700">{f}</span>
                     </li>
                   ))}
                 </ul>
                 <Link to="/register" className="mt-8 block" data-testid="pricing-premium-cta">
-                  <Button className="w-full rounded-full bg-[#C47C5C] hover:bg-[#A86246] text-white h-11 press">
+                  <Button className="w-full rounded-full bg-primary hover:bg-primary/90 text-white h-11 press">
                     Start free · upgrade anytime
                   </Button>
                 </Link>
@@ -241,28 +241,28 @@ export default function Landing() {
             </div>
 
             {/* Premium Plus */}
-            <div className="rounded-3xl border border-stone-200 bg-[#2C302E] text-white p-8 relative overflow-hidden" data-testid="pricing-premium-plus">
+            <div className="rounded-3xl border border-stone-200 bg-foreground text-white p-8 relative overflow-hidden" data-testid="pricing-premium-plus">
               <div
                 className="absolute inset-0 opacity-50 pointer-events-none"
                 style={{ background: "radial-gradient(420px 220px at 10% 110%, rgba(196,124,92,0.35), transparent 60%)" }}
               />
               <div className="relative">
                 <div className="flex items-baseline justify-between">
-                  <p className="text-[11px] uppercase tracking-[0.26em] text-[#E3A587]">Premium Plus</p>
-                  <span className="rounded-full bg-[#C47C5C] text-white px-3 py-1 text-[10px] uppercase tracking-[0.22em]">Best for chains</span>
+                  <p className="text-[11px] uppercase tracking-[0.26em] text-primary/70">Premium Plus</p>
+                  <span className="rounded-full bg-primary text-white px-3 py-1 text-[10px] uppercase tracking-[0.22em]">Best for chains</span>
                 </div>
                 <p className="font-serif-display text-5xl mt-4">${premiumPlusPlan?.price_monthly ?? 49}<span className="text-base text-stone-300"> /mo</span></p>
                 <p className="text-sm text-stone-300">per owner · cancel anytime</p>
                 <ul className="mt-7 space-y-3 text-sm">
                   {(premiumPlusPlan?.features || []).map((f) => (
                     <li key={f} className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-[#E3A587] flex-none mt-0.5" />
+                      <CheckCircle2 className="h-4 w-4 text-primary/70 flex-none mt-0.5" />
                       <span className="text-stone-100">{f}</span>
                     </li>
                   ))}
                 </ul>
                 <Link to="/register" className="mt-8 block" data-testid="pricing-premium-plus-cta">
-                  <Button className="w-full rounded-full bg-white hover:bg-stone-100 text-[#2C302E] h-11 press">
+                  <Button className="w-full rounded-full bg-white hover:bg-stone-100 text-foreground h-11 press">
                     Talk to us
                   </Button>
                 </Link>
@@ -276,7 +276,7 @@ export default function Landing() {
       </section>
 
       <section className="mx-auto max-w-5xl px-5 py-20 lg:py-28 text-center">
-        <Sparkles className="mx-auto h-6 w-6 text-[#C47C5C]" />
+        <Sparkles className="mx-auto h-6 w-6 text-primary" />
         <h2 className="font-serif-display mt-4 text-3xl sm:text-4xl lg:text-5xl leading-tight">
           Ready to stop juggling a paper notebook?
         </h2>
@@ -285,7 +285,7 @@ export default function Landing() {
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Link to="/register" data-testid="final-cta-register">
-            <Button className="rounded-full bg-[#C47C5C] hover:bg-[#A86246] text-white h-12 px-8 press">
+            <Button className="rounded-full bg-primary hover:bg-primary/90 text-white h-12 px-8 press">
               Create your account
             </Button>
           </Link>
@@ -297,9 +297,9 @@ export default function Landing() {
         </div>
 
         <div className="mt-12 flex flex-wrap items-center justify-center gap-6 text-xs text-stone-500">
-          <span className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#7D9276]" /> Free tier forever</span>
-          <span className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#7D9276]" /> No app to install</span>
-          <span className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#7D9276]" /> Works on any phone</span>
+          <span className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-success" /> Free tier forever</span>
+          <span className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-success" /> No app to install</span>
+          <span className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-success" /> Works on any phone</span>
         </div>
       </section>
 

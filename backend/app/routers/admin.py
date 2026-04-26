@@ -7,7 +7,14 @@ from ..config import LOCKOUT_THRESHOLD, LOCKOUT_WINDOW_MINUTES
 from ..db import db
 from ..models import AdminPlanUpdate, AdminUserUpdate
 from ..security import get_current_user, require_super_admin
-from ..services import apply_plan_catalog, clear_attempts, public_business, public_plan
+from ..services import (
+    apply_plan_catalog,
+    clear_attempts,
+    paid_plan_expires_at,
+    public_business,
+    public_plan,
+    public_user,
+)
 
 router = APIRouter(prefix="/admin")
 
@@ -102,13 +109,36 @@ async def admin_update_plan(
 
 
 @router.get("/users")
-async def admin_users(user: dict = Depends(get_current_user)):
+async def admin_users(
+    page: int = 1,
+    page_size: int = 25,
+    sort_by: str = "created_at",
+    sort_dir: str = "desc",
+    search: str = "",
+    user: dict = Depends(get_current_user)
+):
     require_super_admin(user)
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+    
+    query = {"role": "owner"}
+    if search:
+        query["$or"] = [
+            {"email": {"$regex": search, "$options": "i"}},
+            {"name": {"$regex": search, "$options": "i"}}
+        ]
+        
+    total = await db.users.count_documents(query)
+    sort_order = 1 if sort_dir == "asc" else -1
+    
     users = (
-        await db.users.find({"role": "owner"}, {"_id": 0, "password_hash": 0})
-        .sort("created_at", -1)
-        .to_list(2000)
+        await db.users.find(query, {"_id": 0, "password_hash": 0})
+        .sort(sort_by, sort_order)
+        .skip((page - 1) * page_size)
+        .limit(page_size)
+        .to_list(page_size)
     )
+    
     out = []
     for u in users:
         count = await db.businesses.count_documents({"owner_user_id": u["id"]})
@@ -117,6 +147,9 @@ async def admin_users(user: dict = Depends(get_current_user)):
             "email": u["email"],
             "name": u.get("name", ""),
             "plan": u.get("plan", "free"),
+            "plan_expires_at": u.get("plan_expires_at"),
+            "plan_days_remaining": public_user(u).get("plan_days_remaining"),
+            "pending_plan": u.get("pending_plan"),
             "created_at": u.get("created_at"),
             "outlet_count": count,
             "is_locked": bool(u.get("is_locked", False)),
@@ -124,7 +157,7 @@ async def admin_users(user: dict = Depends(get_current_user)):
             "locked_at": u.get("locked_at"),
             "locked_reason": u.get("locked_reason"),
         })
-    return out
+    return {"items": out, "total": total, "page": page, "page_size": page_size}
 
 
 @router.patch("/users/{user_id}")
@@ -138,6 +171,14 @@ async def admin_update_user(
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "plan" in updates:
+        now = datetime.now(timezone.utc)
+        updates["plan_started_at"] = now.isoformat()
+        updates["pending_plan"] = None
+        updates["pending_plan_requested_at"] = None
+        updates["plan_expires_at"] = (
+            None if updates["plan"] == "free" else paid_plan_expires_at(now).isoformat()
+        )
     if updates.get("is_locked") is False:
         # Unlocking also clears any login throttle on that account
         updates["locked_at"] = None
@@ -185,16 +226,35 @@ async def admin_reject_user(
 
 
 @router.get("/users/pending")
-async def admin_pending_users(user: dict = Depends(get_current_user)):
-    """List all users pending approval."""
+async def admin_pending_users(
+    page: int = 1,
+    page_size: int = 25,
+    sort_by: str = "created_at",
+    sort_dir: str = "desc",
+    search: str = "",
+    user: dict = Depends(get_current_user)
+):
+    """List all users pending approval (exclude rejected users)."""
     require_super_admin(user)
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+
+    query = {"role": "owner", "is_approved": False, "rejected_at": {"$exists": False}}
+    if search:
+        query["$or"] = [
+            {"email": {"$regex": search, "$options": "i"}},
+            {"name": {"$regex": search, "$options": "i"}}
+        ]
+
+    total = await db.users.count_documents(query)
+    sort_order = 1 if sort_dir == "asc" else -1
+
     users = (
-        await db.users.find(
-            {"role": "owner", "is_approved": False},
-            {"_id": 0, "password_hash": 0},
-        )
-        .sort("created_at", -1)
-        .to_list(2000)
+        await db.users.find(query, {"_id": 0, "password_hash": 0})
+        .sort(sort_by, sort_order)
+        .skip((page - 1) * page_size)
+        .limit(page_size)
+        .to_list(page_size)
     )
     out = []
     for u in users:
@@ -207,13 +267,86 @@ async def admin_pending_users(user: dict = Depends(get_current_user)):
             "created_at": u.get("created_at"),
             "outlet_count": count,
         })
-    return out
+    return {"items": out, "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/users/rejected")
+async def admin_rejected_users(
+    page: int = 1,
+    page_size: int = 25,
+    sort_by: str = "rejected_at",
+    sort_dir: str = "desc",
+    search: str = "",
+    user: dict = Depends(get_current_user)
+):
+    """List all rejected users."""
+    require_super_admin(user)
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+
+    query = {"role": "owner", "rejected_at": {"$exists": True}}
+    if search:
+        query["$or"] = [
+            {"email": {"$regex": search, "$options": "i"}},
+            {"name": {"$regex": search, "$options": "i"}}
+        ]
+
+    total = await db.users.count_documents(query)
+    sort_order = 1 if sort_dir == "asc" else -1
+
+    users = (
+        await db.users.find(query, {"_id": 0, "password_hash": 0})
+        .sort(sort_by, sort_order)
+        .skip((page - 1) * page_size)
+        .limit(page_size)
+        .to_list(page_size)
+    )
+    out = []
+    for u in users:
+        count = await db.businesses.count_documents({"owner_user_id": u["id"]})
+        out.append({
+            "id": u["id"],
+            "email": u["email"],
+            "name": u.get("name", ""),
+            "plan": u.get("plan", "free"),
+            "created_at": u.get("created_at"),
+            "rejected_at": u.get("rejected_at"),
+            "outlet_count": count,
+        })
+    return {"items": out, "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/businesses")
-async def admin_businesses(user: dict = Depends(get_current_user)):
+async def admin_businesses(
+    page: int = 1,
+    page_size: int = 25,
+    sort_by: str = "created_at",
+    sort_dir: str = "desc",
+    search: str = "",
+    user: dict = Depends(get_current_user)
+):
     require_super_admin(user)
-    docs = await db.businesses.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+    
+    query = {}
+    if search:
+        query["$or"] = [
+            {"business_name": {"$regex": search, "$options": "i"}},
+            {"city": {"$regex": search, "$options": "i"}}
+        ]
+        
+    total = await db.businesses.count_documents(query)
+    sort_order = 1 if sort_dir == "asc" else -1
+    
+    docs = (
+        await db.businesses.find(query, {"_id": 0})
+        .sort(sort_by, sort_order)
+        .skip((page - 1) * page_size)
+        .limit(page_size)
+        .to_list(page_size)
+    )
+    
     owner_ids = list({d["owner_user_id"] for d in docs if d.get("owner_user_id")})
     owners = {}
     if owner_ids:
@@ -230,7 +363,7 @@ async def admin_businesses(user: dict = Depends(get_current_user)):
         pb["owner_name"] = owner.get("name", "")
         pb["owner_plan"] = owner.get("plan", "free")
         out.append(pb)
-    return out
+    return {"items": out, "total": total, "page": page, "page_size": page_size}
 
 
 @router.delete("/businesses/{business_id}")

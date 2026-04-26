@@ -15,7 +15,7 @@ function StatCard({ label, value, hint, accent, testid }) {
   return (
     <div className="rounded-2xl border border-stone-200 bg-white p-5" data-testid={testid}>
       <p className="text-[11px] uppercase tracking-[0.22em] text-stone-500">{label}</p>
-      <p className={`font-serif-display text-4xl mt-2 ${accent || "text-[#2C302E]"}`}>{value}</p>
+      <p className={`font-serif-display text-4xl mt-2 ${accent || "text-foreground"}`}>{value}</p>
       {hint && <p className="mt-1 text-xs text-stone-500">{hint}</p>}
     </div>
   );
@@ -23,8 +23,8 @@ function StatCard({ label, value, hint, accent, testid }) {
 
 function statusBadge(paid) {
   return paid
-    ? "bg-[#7D9276]/15 text-[#4c6547] border-[#7D9276]/40"
-    : "bg-[#E3A587]/20 text-[#A86246] border-[#E3A587]/50";
+    ? "bg-success/15 text-success border-success/40"
+    : "bg-primary/20 text-primary border-primary/50";
 }
 
 export default function Collections() {
@@ -88,12 +88,12 @@ export default function Collections() {
   }));
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6]">
+    <div className="min-h-screen bg-background">
       <DashboardHeader activeTab="collections" />
       <main className="mx-auto max-w-6xl px-5 py-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Collections</p>
+            <p className="text-[11px] uppercase tracking-[0.26em] text-primary">Collections</p>
             <h1 className="font-serif-display text-4xl sm:text-5xl mt-2 leading-none">{business.business_name}</h1>
             <p className="mt-2 text-stone-600 text-sm">
               {paidPlan
@@ -159,7 +159,7 @@ export default function Collections() {
         </div>
 
         {!paidPlan && (
-          <div className="mt-5 rounded-2xl border border-[#E3D9C8] bg-[#F4EFE8] px-5 py-4" data-testid="collections-upgrade-note">
+          <div className="mt-5 rounded-2xl border border-border bg-secondary px-5 py-4" data-testid="collections-upgrade-note">
             <p className="text-sm text-stone-700">
               <span className="font-medium">{planLabel(auth?.user)} plan:</span> collections stay available for the last 7 days.
               Upgrade to Premium or Premium Plus to unlock 14, 30, 90, and 180 day views.
@@ -172,14 +172,14 @@ export default function Collections() {
             label="Collected"
             value={`₹${Number(totals.amount || 0).toLocaleString("en-IN")}`}
             hint={`${totals.ticket_count} completed tickets`}
-            accent="text-[#A86246]"
+            accent="text-primary"
             testid="collections-total"
           />
           <StatCard
             label="Paid"
             value={`₹${Number(totals.paid_amount || 0).toLocaleString("en-IN")}`}
             hint={`${totals.paid_count} tickets`}
-            accent="text-[#4c6547]"
+            accent="text-success"
             testid="collections-paid"
           />
           <StatCard
@@ -207,15 +207,15 @@ export default function Collections() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={series} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E6E4E0" vertical={false} />
-                  <XAxis dataKey="shortDate" stroke="#5C5F5D" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#5C5F5D" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="shortDate" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip
                     formatter={(value) => [`₹${Number(value).toLocaleString("en-IN")}`, "Collection"]}
-                    contentStyle={{ borderRadius: 12, border: "1px solid #E6E4E0", fontSize: 12 }}
-                    cursor={{ fill: "#F4EFE8" }}
+                    contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", fontSize: 12 }}
+                    cursor={{ fill: "hsl(var(--secondary))" }}
                   />
-                  <Bar dataKey="amount" fill="#C47C5C" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}

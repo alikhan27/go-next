@@ -7,7 +7,7 @@ from pymongo import ASCENDING
 from .config import LOCKOUT_WINDOW_MINUTES
 from .db import db
 from .security import hash_password
-from .services import apply_plan_catalog
+from .services import apply_plan_catalog, paid_plan_expires_at
 
 
 async def ensure_indexes() -> None:
@@ -77,7 +77,7 @@ async def ensure_indexes() -> None:
 
 async def seed_demo_data() -> None:
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@go-next.in").lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "Demo@1234") # Updated password
     existing_admin = await db.users.find_one({"email": admin_email})
     if not existing_admin:
         admin_id = str(uuid.uuid4())
@@ -129,8 +129,21 @@ async def seed_demo_data() -> None:
     await db.users.update_many(
         {"role": "owner", "plan": {"$exists": False}}, {"$set": {"plan": "free"}}
     )
+    await db.users.update_many(
+        {"role": "owner", "plan_started_at": {"$exists": False}},
+        {"$set": {"plan_started_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    await db.users.update_many(
+        {"role": "owner", "pending_plan": {"$exists": False}},
+        {"$set": {"pending_plan": None}},
+    )
     await db.users.update_one(
-        {"email": admin_email, "plan": "free"}, {"$set": {"plan": "premium"}}
+        {"email": admin_email, "plan": "free"},
+        {"$set": {
+            "plan": "premium",
+            "plan_started_at": datetime.now(timezone.utc).isoformat(),
+            "plan_expires_at": paid_plan_expires_at().isoformat(),
+        }},
     )
 
     # Seed a super-admin (idempotent)
@@ -139,7 +152,7 @@ async def seed_demo_data() -> None:
         await db.users.insert_one({
             "id": str(uuid.uuid4()),
             "email": super_email,
-            "password_hash": hash_password("admin123"),
+            "password_hash": hash_password("Demo@1234"), # Updated password
             "name": "Platform Admin",
             "role": "super_admin",
             "plan": "premium",

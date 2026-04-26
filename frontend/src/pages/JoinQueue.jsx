@@ -6,6 +6,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { Check, MapPin, Users, Clock, Sparkles } from "lucide-react";
+import { LogoMark } from "../components/LogoMark";
 
 export default function JoinQueue() {
   const { businessId } = useParams();
@@ -84,12 +85,12 @@ export default function JoinQueue() {
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-[#F9F8F6] text-stone-500">Loading…</div>;
+    return <div className="min-h-screen flex items-center justify-center bg-background text-stone-500">Loading…</div>;
   }
 
   if (notFound || !summary) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F9F8F6] px-5">
+      <div className="min-h-screen flex items-center justify-center bg-background px-5">
         <div className="text-center max-w-sm">
           <h1 className="font-serif-display text-4xl">We couldn&apos;t find this salon.</h1>
           <p className="mt-2 text-stone-600 text-sm">The join link may have changed.</p>
@@ -116,21 +117,21 @@ export default function JoinQueue() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] text-[#2C302E]">
+    <div className="min-h-screen bg-background text-foreground">
       <div className="warm-hero-gradient grain">
         <div className="mx-auto max-w-md px-5 pt-12 pb-10">
           <div className="flex items-center justify-center">
             <div className="inline-flex items-center gap-3 rounded-full border border-stone-200/80 bg-white/90 px-4 py-2.5 shadow-sm backdrop-blur-xl">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#C47C5C] text-white font-serif-display text-lg">
-                g
-              </div>
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/12 text-primary ring-1 ring-primary/20">
+                <LogoMark className="h-6 w-6" />
+              </span>
               <div className="text-left">
                 <p className="text-[10px] uppercase tracking-[0.22em] text-stone-500">Queue by</p>
-                <p className="text-sm font-semibold leading-none text-[#2C302E]">Go-Next</p>
+                <p className="text-sm font-semibold leading-none text-foreground">Go-Next</p>
               </div>
             </div>
           </div>
-          <p className="mt-5 text-[11px] uppercase tracking-[0.26em] text-[#A86246] text-center">Join the queue</p>
+          <p className="mt-5 text-[11px] uppercase tracking-[0.26em] text-primary text-center">Join the queue</p>
           <h1 className="font-serif-display mt-3 text-4xl sm:text-5xl leading-none text-center">{business.business_name}</h1>
           {business.address && (
             <p className="mt-2 text-sm text-stone-600 flex items-center justify-center gap-1.5 text-center">
@@ -141,11 +142,11 @@ export default function JoinQueue() {
           <div className="mt-6 grid grid-cols-3 gap-3">
             <div className="rounded-2xl border border-stone-200 bg-white/80 backdrop-blur-xl px-4 py-3 text-center">
               <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Waiting</p>
-              <p className="font-serif-display text-2xl text-[#A86246]">{waiting_count}</p>
+              <p className="font-serif-display text-2xl text-primary">{waiting_count}</p>
             </div>
             <div className="rounded-2xl border border-stone-200 bg-white/80 backdrop-blur-xl px-4 py-3 text-center">
               <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Serving</p>
-              <p className="font-serif-display text-2xl text-[#4c6547]">{serving_count}</p>
+              <p className="font-serif-display text-2xl text-success">{serving_count}</p>
             </div>
             <div className="rounded-2xl border border-stone-200 bg-white/80 backdrop-blur-xl px-4 py-3 text-center">
               <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">~ Wait</p>
@@ -174,7 +175,7 @@ export default function JoinQueue() {
             {services.length > 0 && (
               <div data-testid="join-services">
                 <Label className="flex items-center gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5 text-[#C47C5C]" />
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
                   Pick services
                 </Label>
                 <p className="mt-1 text-xs text-stone-500">Optional. Choose any that apply and we&apos;ll add up the time to estimate your wait.</p>
@@ -188,7 +189,7 @@ export default function JoinQueue() {
                         onClick={() => toggleService(s.id)}
                         className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
                           active
-                            ? "border-[#C47C5C] bg-[#F4EFE8] text-[#A86246]"
+                            ? "border-primary bg-secondary text-primary"
                             : "border-stone-200 hover:border-stone-300 hover:bg-stone-50"
                         }`}
                         data-testid={`join-service-${s.id}`}
@@ -196,17 +197,17 @@ export default function JoinQueue() {
                         <span className="flex items-center gap-3 min-w-0">
                           <span className={`flex h-5 w-5 items-center justify-center rounded-md border ${
                             active
-                              ? "border-[#C47C5C] bg-[#C47C5C] text-white"
+                              ? "border-primary bg-primary text-white"
                               : "border-stone-300 text-transparent"
                           }`}>
                             <Check className="h-3.5 w-3.5" />
                           </span>
                           <span className="font-medium truncate">{s.name}</span>
                         </span>
-                        <span className={`flex items-center gap-3 text-xs ${active ? "text-[#A86246]" : "text-stone-500"}`}>
+                        <span className={`flex items-center gap-3 text-xs ${active ? "text-primary" : "text-stone-500"}`}>
                           <span>~ {s.duration_minutes} min</span>
                           {s.price > 0 && (
-                            <span className={`font-medium ${active ? "text-[#A86246]" : "text-stone-700"}`}>
+                            <span className={`font-medium ${active ? "text-primary" : "text-stone-700"}`}>
                               ₹{Number(s.price).toLocaleString("en-IN")}
                             </span>
                           )}
@@ -216,7 +217,7 @@ export default function JoinQueue() {
                   })}
                 </div>
                 {selectedServices.length > 0 && (
-                  <div className="mt-3 rounded-xl bg-[#F4EFE8] px-4 py-3 text-sm text-[#7A4C38]" data-testid="join-services-summary">
+                  <div className="mt-3 rounded-xl bg-secondary px-4 py-3 text-sm text-primary" data-testid="join-services-summary">
                     <span className="font-medium">
                       {selectedServices.length === 1
                         ? selectedServices[0].name
@@ -246,7 +247,7 @@ export default function JoinQueue() {
                 data-testid="join-phone" />
             </div>
             <Button type="submit" disabled={submitting}
-              className="w-full h-12 rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white press disabled:opacity-50"
+              className="w-full h-12 rounded-full bg-foreground hover:bg-foreground/90 text-white press disabled:opacity-50"
               data-testid="join-submit">
               {submitting
                 ? "Getting your token…"

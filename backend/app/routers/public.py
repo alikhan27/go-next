@@ -16,6 +16,7 @@ from ..services import (
     resolve_services_for_ticket,
     requested_service_ids,
     ticket_service_fields,
+    utc_day_bounds,
 )
 
 router = APIRouter(prefix="/public")
@@ -34,8 +35,17 @@ async def public_queue_summary(business_id: str):
     b = await db.businesses.find_one({"id": business_id}, {"_id": 0})
     if not b:
         raise HTTPException(status_code=404, detail="Business not found")
-    waiting = await db.queue.count_documents({"business_id": business_id, "status": "waiting"})
-    serving = await db.queue.count_documents({"business_id": business_id, "status": "serving"})
+    start, end = utc_day_bounds()
+    today_query = {"$gte": start.isoformat(), "$lt": end.isoformat()}
+    waiting = await db.queue.count_documents({
+        "business_id": business_id,
+        "status": "waiting",
+        "created_at": today_query
+    })
+    serving = await db.queue.count_documents({
+        "business_id": business_id,
+        "status": "serving"
+    })
     eta = await estimate_wait_for_new_join(b)
     return {
         "business": public_business(b),
@@ -92,10 +102,13 @@ async def public_ticket_status(ticket_id: str):
         raise HTTPException(status_code=404, detail="Ticket not found")
     position = 0
     if t["status"] == "waiting":
+        start, end = utc_day_bounds()
+        today_query = {"$gte": start.isoformat(), "$lt": end.isoformat()}
         position = await db.queue.count_documents(
             {
                 "business_id": t["business_id"],
                 "status": "waiting",
+                "created_at": today_query,
                 "token_number": {"$lt": t["token_number"]},
             }
         ) + 1
@@ -116,19 +129,28 @@ async def public_display(business_id: str):
     if not b:
         raise HTTPException(status_code=404, detail="Business not found")
 
+    start, end = utc_day_bounds()
+    today_query = {"$gte": start.isoformat(), "$lt": end.isoformat()}
+    
     serving = (
-        await db.queue.find({"business_id": business_id, "status": "serving"}, {"_id": 0})
+        await db.queue.find(
+            {"business_id": business_id, "status": "serving"},
+            {"_id": 0}
+        )
         .sort("chair_number", 1)
         .to_list(50)
     )
     waiting = (
-        await db.queue.find({"business_id": business_id, "status": "waiting"}, {"_id": 0})
-        .sort("token_number", 1)
+        await db.queue.find(
+            {"business_id": business_id, "status": "waiting", "created_at": today_query},
+            {"_id": 0}
+        )
+        .sort([("created_at", 1), ("token_number", 1)])
         .limit(6)
         .to_list(6)
     )
     waiting_count = await db.queue.count_documents(
-        {"business_id": business_id, "status": "waiting"}
+        {"business_id": business_id, "status": "waiting", "created_at": today_query}
     )
     return {
         "business": public_business(b),

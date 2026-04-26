@@ -1,10 +1,13 @@
 """Owner queue management + stats + analytics (per-outlet)."""
 import uuid
+import asyncio
+import json
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from starlette.responses import StreamingResponse
 
 from ..db import db
 from ..models import CompleteTicketRequest, MarkPaidRequest, UpdateStatusRequest, WalkInRequest
@@ -17,6 +20,7 @@ from ..services import (
     public_ticket,
     resolve_services_for_ticket,
     ticket_service_fields,
+    utc_day_bounds,
 )
 
 router = APIRouter(prefix="/business/{business_id}")
@@ -29,15 +33,67 @@ async def list_queue(
     status: Optional[str] = None,
 ):
     await owned_business_or_404(user["id"], business_id)
-    query = {"business_id": business_id}
+    start, end = utc_day_bounds()
+    today_query = {"$gte": start.isoformat(), "$lt": end.isoformat()}
+    
+    # We show ALL serving tickets (regardless of when they started)
+    # but only TODAY's waiting tickets (to honor the daily reset).
     if status:
-        query["status"] = status
+        query = {
+            "business_id": business_id,
+            "status": status,
+        }
+        if status == "waiting":
+            query["created_at"] = today_query
     else:
-        query["status"] = {"$in": ["waiting", "serving"]}
+        query = {
+            "business_id": business_id,
+            "$or": [
+                {"status": "serving"},
+                {"status": "waiting", "created_at": today_query}
+            ]
+        }
+
     tickets = (
-        await db.queue.find(query, {"_id": 0}).sort("token_number", 1).to_list(1000)
+        await db.queue.find(query, {"_id": 0})
+        .sort([("created_at", 1), ("token_number", 1)])
+        .to_list(1000)
     )
     return [public_ticket(t) for t in tickets]
+
+
+@router.get("/queue/events")
+async def queue_events(business_id: str, user: dict = Depends(get_current_user)):
+    await owned_business_or_404(user["id"], business_id)
+
+    async def event_generator():
+        while True:
+            start, end = utc_day_bounds()
+            today_query = {"$gte": start.isoformat(), "$lt": end.isoformat()}
+            query = {
+                "business_id": business_id,
+                "$or": [
+                    {"status": "serving"},
+                    {"status": "waiting", "created_at": today_query}
+                ]
+            }
+            tickets = (
+                await db.queue.find(query, {"_id": 0})
+                .sort([("created_at", 1), ("token_number", 1)])
+                .to_list(1000)
+            )
+            payload = json.dumps([public_ticket(t) for t in tickets])
+            yield f"data: {payload}\n\n"
+            await asyncio.sleep(3)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.post("/queue/walk-in")
@@ -108,8 +164,7 @@ async def mark_paid(
     t = await db.queue.find_one({"id": ticket_id, "business_id": business["id"]}, {"_id": 0})
     if not t:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    if body.paid and not body.payment_method:
-        raise HTTPException(status_code=400, detail="Choose cash or online before marking as paid")
+    
     updates: dict = {"paid": bool(body.paid)}
     updates["paid_at"] = datetime.now(timezone.utc).isoformat() if body.paid else None
     updates["payment_method"] = body.payment_method if body.paid else None
@@ -131,10 +186,6 @@ async def complete_ticket(
         raise HTTPException(status_code=404, detail="Ticket not found")
     if t.get("status") != "serving":
         raise HTTPException(status_code=400, detail="Only serving tickets can be completed")
-    if body.paid and not body.payment_method:
-        raise HTTPException(status_code=400, detail="Choose cash or online before completing")
-    if body.payment_method and not body.paid:
-        raise HTTPException(status_code=400, detail="Payment method can only be set for paid tickets")
 
     services = await resolve_services_for_ticket(
         business_id,
@@ -205,28 +256,37 @@ async def call_next(business_id: str, user: dict = Depends(get_current_user)):
 @router.get("/stats")
 async def queue_stats(business_id: str, user: dict = Depends(get_current_user)):
     await owned_business_or_404(user["id"], business_id)
-    today = datetime.now(timezone.utc).date().isoformat()
-    waiting = await db.queue.count_documents({"business_id": business_id, "status": "waiting"})
-    serving = await db.queue.count_documents({"business_id": business_id, "status": "serving"})
+    start, end = utc_day_bounds()
+    today_query = {"$gte": start.isoformat(), "$lt": end.isoformat()}
+    waiting = await db.queue.count_documents({
+        "business_id": business_id,
+        "status": "waiting",
+        "created_at": today_query
+    })
+    serving = await db.queue.count_documents({
+        "business_id": business_id,
+        "status": "serving"
+    })
+    today_str = start.date().isoformat()
     completed_today = await db.queue.count_documents(
         {
             "business_id": business_id,
             "status": "completed",
-            "finished_at": {"$regex": f"^{today}"},
+            "finished_at": {"$regex": f"^{today_str}"},
         }
     )
     no_show_today = await db.queue.count_documents(
         {
             "business_id": business_id,
             "status": {"$in": ["cancelled", "no_show"]},
-            "finished_at": {"$regex": f"^{today}"},
+            "finished_at": {"$regex": f"^{today_str}"},
         }
     )
     revenue_pipeline = [
         {"$match": {
             "business_id": business_id,
             "paid": True,
-            "finished_at": {"$regex": f"^{today}"},
+            "finished_at": {"$regex": f"^{today_str}"},
         }},
         {"$group": {"_id": None, "total": {"$sum": {"$ifNull": ["$service_price", 0]}}}},
     ]

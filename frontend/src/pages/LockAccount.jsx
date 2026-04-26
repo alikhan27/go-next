@@ -30,7 +30,7 @@ export default function LockAccount() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] flex items-center justify-center px-5 py-10">
+    <div className="min-h-screen bg-background flex items-center justify-center px-5 py-10">
       <div className="w-full max-w-md">
         <Link to="/login" className="text-sm text-stone-500 hover:text-stone-800 inline-flex items-center gap-1" data-testid="lock-back">
           <ArrowLeft className="h-3.5 w-3.5" /> Back to sign in
@@ -72,7 +72,7 @@ export default function LockAccount() {
               Sign-in is blocked for <strong>{done.email}</strong>. Contact our team to restore access.
             </p>
             <Button onClick={() => navigate("/")}
-              className="mt-6 w-full h-11 rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white"
+              className="mt-6 w-full h-11 rounded-full bg-foreground hover:bg-foreground/90 text-white"
               data-testid="lock-home">
               Back to home
             </Button>

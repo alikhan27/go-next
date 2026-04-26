@@ -1,8 +1,12 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "./ui/button";
 import { useAuth } from "../context/AuthContext";
+import BrandLogo from "./LogoMark";
+import { useTheme } from "../context/ThemeContext";
 
 export default function Navbar({ transparent = false }) {
+  const { theme } = useTheme();
+  const appAccentColor = theme?.vars?.["--app-accent"];
   const { auth, logout } = useAuth();
   const navigate = useNavigate();
   const isAuthed = auth && auth !== true && auth.user;
@@ -15,33 +19,32 @@ export default function Navbar({ transparent = false }) {
   return (
     <header
       className={`sticky top-0 z-50 w-full backdrop-blur-xl border-b border-stone-200/70 ${
-        transparent ? "bg-white/60" : "bg-[#F9F8F6]/90"
+        transparent ? "bg-white/60" : "bg-background/90"
       }`}
       data-testid="site-navbar"
     >
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-4">
-        <Link to="/" className="flex items-center gap-2" data-testid="nav-brand">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#C47C5C] text-white font-serif-display text-lg">
-            g
-          </div>
-          <div className="leading-tight">
-            <p className="text-sm font-semibold tracking-tight">Go-Next</p>
-            <p className="text-[10px] uppercase tracking-[0.22em] text-stone-500">
-              Calm queue platform
-            </p>
-          </div>
+        <Link
+          to="/"
+          className="flex items-center gap-2"
+          data-testid="nav-brand"
+        >
+          <BrandLogo color={appAccentColor} />
         </Link>
 
         <nav className="flex items-center gap-2">
           {!isAuthed ? (
             <>
               <Link to="/login" data-testid="nav-login">
-                <Button variant="outline" className="rounded-full border-stone-300 hover:bg-stone-100">
+                <Button
+                  variant="outline"
+                  className="rounded-full border-stone-300 hover:bg-stone-100"
+                >
                   Sign in
                 </Button>
               </Link>
               <Link to="/register" data-testid="nav-register">
-                <Button className="rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white press">
+                <Button className="rounded-full bg-foreground hover:bg-foreground/90 text-white press">
                   Create account
                 </Button>
               </Link>
@@ -49,7 +52,10 @@ export default function Navbar({ transparent = false }) {
           ) : (
             <>
               <Link to="/dashboard" data-testid="nav-dashboard">
-                <Button variant="outline" className="rounded-full border-stone-300">
+                <Button
+                  variant="outline"
+                  className="rounded-full border-stone-300"
+                >
                   Dashboard
                 </Button>
               </Link>

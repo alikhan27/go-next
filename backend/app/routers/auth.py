@@ -32,9 +32,9 @@ from ..services import (
     create_business_doc,
     enforce_lockout,
     list_user_businesses,
-    public_business,
+    public_user,
     record_failed_attempt,
-    user_plan,
+    sync_user_plan,
 )
 
 router = APIRouter(prefix="/auth")
@@ -56,6 +56,9 @@ async def register(body: RegisterRequest, response: Response):
         "name": body.owner_name,
         "role": "owner",
         "plan": "free",
+        "plan_started_at": now,
+        "plan_expires_at": None,
+        "pending_plan": None,
         "is_approved": False,
         "created_at": now,
     }
@@ -70,11 +73,10 @@ async def register(body: RegisterRequest, response: Response):
         pincode=body.pincode,
     ))
 
-    token = create_access_token(user_id, email)
-    set_auth_cookie(response, token)
     return {
-        "user": {"id": user_id, "email": email, "name": body.owner_name, "role": "owner", "plan": "free"},
-        "businesses": [public_business(business)],
+        "ok": True,
+        "message": "Registration successful. Your account is pending approval.",
+        "user_email": email
     }
 
 
@@ -106,16 +108,12 @@ async def login(body: LoginRequest, request: Request, response: Response):
 
     await clear_attempts(identifier)
 
+    user = await sync_user_plan(user)
     token = create_access_token(user["id"], email)
     set_auth_cookie(response, token)
     businesses = await list_user_businesses(user["id"])
     return {
-        "user": {
-            "id": user["id"], "email": email,
-            "name": user.get("name", ""),
-            "role": user.get("role", "owner"),
-            "plan": user_plan(user),
-        },
+        "user": public_user(user),
         "businesses": businesses,
     }
 
@@ -262,11 +260,6 @@ async def lock_account(body: LockAccountRequest):
 async def me(user: dict = Depends(get_current_user)):
     businesses = await list_user_businesses(user["id"])
     return {
-        "user": {
-            "id": user["id"], "email": user["email"],
-            "name": user.get("name", ""),
-            "role": user.get("role", "owner"),
-            "plan": user_plan(user),
-        },
+        "user": public_user(user),
         "businesses": businesses,
     }

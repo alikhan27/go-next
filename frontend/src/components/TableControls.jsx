@@ -18,7 +18,7 @@ export function TableToolbar({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder={placeholder}
-          className="pl-8 h-9 rounded-full border-stone-200 bg-[#F9F8F6]"
+          className="pl-8 h-9 rounded-full border-stone-200 bg-background"
           data-testid={testidPrefix ? `${testidPrefix}-search` : undefined}
         />
       </div>
@@ -27,7 +27,7 @@ export function TableToolbar({
           {total} {total === 1 ? "row" : "rows"}
         </span>
         <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-          <SelectTrigger className="h-9 w-[120px] rounded-full border-stone-200 bg-[#F9F8F6]" data-testid={testidPrefix ? `${testidPrefix}-page-size` : undefined}>
+          <SelectTrigger className="h-9 w-[120px] rounded-full border-stone-200 bg-background" data-testid={testidPrefix ? `${testidPrefix}-page-size` : undefined}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -47,7 +47,7 @@ export function SortableHead({ label, sortKey, sort, onToggle, className = "", c
   const active = sort && sort.key === sortKey;
   const dir = active ? sort.dir : null;
   return (
-    <TableHead className={`cursor-pointer select-none hover:text-[#A86246] ${className}`} onClick={() => onToggle(sortKey)} {...rest}>
+    <TableHead className={`cursor-pointer select-none hover:text-primary ${className}`} onClick={() => onToggle(sortKey)} {...rest}>
       <span className="inline-flex items-center gap-1">
         {children || label}
         {dir === "asc" ? (

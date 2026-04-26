@@ -10,17 +10,18 @@ import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Check, Clock } from "lucide-react";
 
 export default function Settings() {
   const { businessId } = useParams();
   const navigate = useNavigate();
-  const { auth, updateBusiness } = useAuth();
-  const { planLimits } = usePlans();
+  const { auth, updateBusiness, updateUser } = useAuth();
+  const { catalog, planLimits } = usePlans();
   const businesses = auth?.businesses || [];
   const business = businesses.find((b) => b.id === businessId);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [changingPlan, setChangingPlan] = useState(null);
 
   useEffect(() => {
     if (business) {
@@ -47,6 +48,14 @@ export default function Settings() {
   if (!form) return null;
 
   const limits = planLimits(auth?.user);
+  const planOrder = ["free", "premium", "premium_plus"];
+  const currentPlan = auth?.user?.plan || "free";
+  const pendingPlan = auth?.user?.pending_plan;
+  const currentPlanLabel = catalog[currentPlan]?.label || "Free";
+  const expiryDate = auth?.user?.plan_expires_at
+    ? new Date(auth.user.plan_expires_at)
+    : null;
+  const daysRemaining = auth?.user?.plan_days_remaining;
 
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -69,8 +78,21 @@ export default function Settings() {
     }
   };
 
+  const changePlan = async (plan) => {
+    setChangingPlan(plan);
+    try {
+      const { data } = await api.post("/subscription/change", { plan });
+      updateUser(data.user);
+      toast.success(data.message || "Plan updated");
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    } finally {
+      setChangingPlan(null);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#F9F8F6]">
+    <div className="min-h-screen bg-background">
       <DashboardHeader activeTab="settings" />
       <main className="mx-auto max-w-3xl px-5 py-10">
         <Link to={`/dashboard/${business.id}`} className="text-sm text-stone-500 hover:text-stone-800 inline-flex items-center gap-1" data-testid="back-to-dashboard">
@@ -79,7 +101,64 @@ export default function Settings() {
         <h1 className="font-serif-display text-4xl mt-4">{business.business_name}</h1>
         <p className="text-stone-600 text-sm mt-1">Keep your outlet details up to date.</p>
 
-        <form onSubmit={save} className="mt-8 space-y-5 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8" data-testid="settings-form">
+        <section className="mt-8 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8" data-testid="plan-settings">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-stone-400">Plan</p>
+              <h2 className="mt-1 font-serif-display text-2xl">{currentPlanLabel}</h2>
+              <p className="mt-1 text-sm text-stone-600">
+                {expiryDate
+                  ? `${daysRemaining ?? 0} day${daysRemaining === 1 ? "" : "s"} left · expires ${expiryDate.toLocaleDateString()}`
+                  : "Free plan does not expire."}
+              </p>
+              {pendingPlan ? (
+                <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-xs text-primary">
+                  <Clock className="h-3.5 w-3.5" />
+                  Switches to {catalog[pendingPlan]?.label || pendingPlan} when this plan ends
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            {planOrder.map((plan) => {
+              const item = catalog[plan];
+              const isCurrent = currentPlan === plan;
+              const isPending = pendingPlan === plan;
+              return (
+                <div key={plan} className="rounded-xl border border-stone-200 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-medium">{item?.label}</p>
+                    {isCurrent ? <Check className="h-4 w-4 text-success" /> : null}
+                  </div>
+                  <p className="mt-1 text-sm text-stone-500">
+                    ${(item?.price_monthly ?? 0)} / month
+                  </p>
+                  <Button
+                    type="button"
+                    variant={isCurrent ? "outline" : "default"}
+                    disabled={isCurrent || changingPlan === plan}
+                    onClick={() => changePlan(plan)}
+                    className={`mt-4 h-10 w-full rounded-full ${isCurrent ? "" : "bg-foreground text-white hover:bg-foreground/90"}`}
+                    data-testid={`change-plan-${plan}`}
+                  >
+                    {isCurrent
+                      ? "Current"
+                      : isPending
+                        ? "Scheduled"
+                        : changingPlan === plan
+                          ? "Saving..."
+                          : planOrder.indexOf(plan) > planOrder.indexOf(currentPlan)
+                            ? "Upgrade"
+                            : "Downgrade"}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <form onSubmit={save} className="mt-6 space-y-5 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8" data-testid="settings-form">
           <div className="grid gap-5 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Label>Business name</Label>
@@ -149,7 +228,7 @@ export default function Settings() {
           </div>
 
           <Button type="submit" disabled={saving}
-            className="rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white h-11 px-8 press"
+            className="rounded-full bg-foreground hover:bg-foreground/90 text-white h-11 px-8 press"
             data-testid="settings-save">
             {saving ? "Saving…" : "Save changes"}
           </Button>
