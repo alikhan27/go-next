@@ -90,8 +90,8 @@ class MarkPaidRequest(BaseModel):
 class CompleteTicketRequest(BaseModel):
     service_ids: list[str] = Field(default_factory=list)
     final_amount: float = Field(ge=0, le=1_000_000)
-    paid: bool = True
-    payment_method: PaymentMethodT
+    paid: bool = False
+    payment_method: Optional[PaymentMethodT] = None
 
 
 # ---- Services (premium+) ----
@@ -114,3 +114,13 @@ class UpdateServiceRequest(BaseModel):
 class AdminUserUpdate(BaseModel):
     plan: Optional[Literal["free", "premium", "premium_plus"]] = None
     is_locked: Optional[bool] = None
+
+
+class AdminPlanUpdate(BaseModel):
+    max_outlets: int = Field(ge=1, le=1000)
+    max_stations: int = Field(ge=1, le=1000)
+    max_tokens_per_day: int = Field(ge=1, le=100000)
+    analytics_days: int = Field(ge=1, le=3650)
+    can_manage_services: bool
+    max_services: int = Field(ge=0, le=1000)
+    features: list[str] = Field(default_factory=list, max_length=20)

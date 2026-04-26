@@ -19,7 +19,7 @@ PASSWORD_RESET_PREVIEW_MODE = True
 ACCOUNT_LOCK_TTL_MINUTES = 60 * 24
 
 # ---- Plan gating ----
-PLAN_LIMITS = {
+DEFAULT_PLAN_LIMITS = {
     "free": {
         "max_outlets": 1,
         "max_stations": 3,
@@ -69,4 +69,9 @@ PLAN_LIMITS = {
             "Dedicated success manager",
         ],
     },
+}
+
+PLAN_LIMITS = {
+    plan_id: {**limits, "features": list(limits.get("features", []))}
+    for plan_id, limits in DEFAULT_PLAN_LIMITS.items()
 }

@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { usePlans } from "../context/PlanContext";
 import { Button } from "../components/ui/button";
 import Navbar from "../components/Navbar";
 import { ArrowRight, Clock, Users, QrCode, Sparkles, CheckCircle2 } from "lucide-react";
@@ -29,6 +30,11 @@ const features = [
 ];
 
 export default function Landing() {
+  const { catalog } = usePlans();
+  const freePlan = catalog.free;
+  const premiumPlan = catalog.premium;
+  const premiumPlusPlan = catalog.premium_plus;
+
   return (
     <div className="min-h-screen bg-[#F9F8F6] text-[#2C302E]">
       <Navbar transparent />
@@ -190,11 +196,7 @@ export default function Landing() {
               <p className="text-sm text-stone-500">forever — no card needed</p>
               <ul className="mt-7 space-y-3 text-sm">
                 {[
-                  "1 outlet with up to 3 stations",
-                  "Up to 50 tokens per day",
-                  "Live queue board & customer QR",
-                  "Live customer ticket tracking",
-                  "7-day analytics",
+                  ...(freePlan?.features || []),
                 ].map((f) => (
                   <li key={f} className="flex items-start gap-2">
                     <CheckCircle2 className="h-4 w-4 text-[#7D9276] flex-none mt-0.5" />
@@ -220,18 +222,10 @@ export default function Landing() {
                   <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Premium</p>
                   <span className="rounded-full bg-[#C47C5C] text-white px-3 py-1 text-[10px] uppercase tracking-[0.22em]">Most popular</span>
                 </div>
-                <p className="font-serif-display text-5xl mt-4">$19<span className="text-base text-stone-500"> /mo</span></p>
+                <p className="font-serif-display text-5xl mt-4">${premiumPlan?.price_monthly ?? 19}<span className="text-base text-stone-500"> /mo</span></p>
                 <p className="text-sm text-stone-500">per owner · cancel anytime</p>
                 <ul className="mt-7 space-y-3 text-sm">
-                  {[
-                    "Up to 3 outlets",
-                    "Up to 10 stations per outlet",
-                    "Up to 200 tokens per day",
-                    "Custom services & accurate ETAs",
-                    "Public TV \u201cNow Serving\u201d display",
-                    "Full 90-day analytics & heatmap",
-                    "Priority support",
-                  ].map((f) => (
+                  {(premiumPlan?.features || []).map((f) => (
                     <li key={f} className="flex items-start gap-2">
                       <CheckCircle2 className="h-4 w-4 text-[#C47C5C] flex-none mt-0.5" />
                       <span className="text-stone-700">{f}</span>
@@ -257,18 +251,10 @@ export default function Landing() {
                   <p className="text-[11px] uppercase tracking-[0.26em] text-[#E3A587]">Premium Plus</p>
                   <span className="rounded-full bg-[#C47C5C] text-white px-3 py-1 text-[10px] uppercase tracking-[0.22em]">Best for chains</span>
                 </div>
-                <p className="font-serif-display text-5xl mt-4">$49<span className="text-base text-stone-300"> /mo</span></p>
+                <p className="font-serif-display text-5xl mt-4">${premiumPlusPlan?.price_monthly ?? 49}<span className="text-base text-stone-300"> /mo</span></p>
                 <p className="text-sm text-stone-300">per owner · cancel anytime</p>
                 <ul className="mt-7 space-y-3 text-sm">
-                  {[
-                    "Up to 25 outlets",
-                    "Up to 10 stations per outlet",
-                    "Up to 500 tokens per day",
-                    "Custom services & accurate ETAs",
-                    "Public TV \u201cNow Serving\u201d display",
-                    "180-day analytics history",
-                    "Dedicated success manager",
-                  ].map((f) => (
+                  {(premiumPlusPlan?.features || []).map((f) => (
                     <li key={f} className="flex items-start gap-2">
                       <CheckCircle2 className="h-4 w-4 text-[#E3A587] flex-none mt-0.5" />
                       <span className="text-stone-100">{f}</span>

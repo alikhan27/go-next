@@ -56,6 +56,7 @@ async def register(body: RegisterRequest, response: Response):
         "name": body.owner_name,
         "role": "owner",
         "plan": "free",
+        "is_approved": False,
         "created_at": now,
     }
     await db.users.insert_one(user_doc)
@@ -95,6 +96,12 @@ async def login(body: LoginRequest, request: Request, response: Response):
         raise HTTPException(
             status_code=403,
             detail="This account has been frozen for safety. Contact support to restore access.",
+        )
+
+    if not user.get("is_approved", True):
+        raise HTTPException(
+            status_code=403,
+            detail="Your account is pending approval. You will be notified once approved.",
         )
 
     await clear_attempts(identifier)

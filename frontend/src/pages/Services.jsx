@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { isPaidPlan, planLimits, planLabel } from "../lib/plans";
+import { usePlans } from "../context/PlanContext";
 import DashboardHeader from "../components/DashboardHeader";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -28,6 +28,7 @@ import { Plus, Trash2, Sparkles, ArrowLeft, Pencil, Check, X } from "lucide-reac
 export default function Services() {
   const { businessId } = useParams();
   const { auth } = useAuth();
+  const { isPaidPlan, planLimits, planLabel } = usePlans();
   const businesses = auth?.businesses || [];
   const business = businesses.find((b) => b.id === businessId);
 

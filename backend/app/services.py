@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from .config import LOCKOUT_THRESHOLD, LOCKOUT_WINDOW_MINUTES, PLAN_LIMITS
+from .config import DEFAULT_PLAN_LIMITS, LOCKOUT_THRESHOLD, LOCKOUT_WINDOW_MINUTES, PLAN_LIMITS
 from .db import db
 from .models import CreateBusinessRequest
 
@@ -20,6 +20,47 @@ def user_plan(user: dict) -> str:
 
 def plan_limits(user: dict) -> dict:
     return PLAN_LIMITS[user_plan(user)]
+
+
+def public_plan(plan_id: str) -> dict:
+    labels = {
+        "free": "Free",
+        "premium": "Premium",
+        "premium_plus": "Premium Plus",
+    }
+    prices = {
+        "free": 0,
+        "premium": 19,
+        "premium_plus": 49,
+    }
+    limits = PLAN_LIMITS[plan_id]
+    return {
+        "id": plan_id,
+        "name": labels[plan_id],
+        "label": labels[plan_id],
+        "price_monthly": prices[plan_id],
+        **limits,
+    }
+
+
+def apply_plan_catalog(overrides: dict | None = None) -> dict:
+    PLAN_LIMITS.clear()
+    for plan_id, defaults in DEFAULT_PLAN_LIMITS.items():
+        source = overrides.get(plan_id, {}) if isinstance(overrides, dict) else {}
+        PLAN_LIMITS[plan_id] = {
+            "max_outlets": int(source.get("max_outlets", defaults["max_outlets"])),
+            "max_stations": int(source.get("max_stations", defaults["max_stations"])),
+            "max_tokens_per_day": int(source.get("max_tokens_per_day", defaults["max_tokens_per_day"])),
+            "analytics_days": int(source.get("analytics_days", defaults["analytics_days"])),
+            "can_manage_services": bool(source.get("can_manage_services", defaults["can_manage_services"])),
+            "max_services": int(source.get("max_services", defaults["max_services"])),
+            "features": [
+                str(item).strip()
+                for item in source.get("features", defaults.get("features", []))
+                if str(item).strip()
+            ][:20] or list(defaults.get("features", [])),
+        }
+    return PLAN_LIMITS
 
 
 def require_paid_plan(user: dict) -> None:

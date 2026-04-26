@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Navigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { planLimits } from "../lib/plans";
+import { usePlans } from "../context/PlanContext";
 import DashboardHeader from "../components/DashboardHeader";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -78,6 +78,7 @@ function Heatmap({ cells }) {
 export default function Analytics() {
   const { businessId } = useParams();
   const { auth } = useAuth();
+  const { planLimits } = usePlans();
   const businesses = auth?.businesses || [];
   const business = businesses.find((b) => b.id === businessId);
   const planMaxDays = planLimits(auth?.user).analytics_days;

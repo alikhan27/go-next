@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { useParams, Link, Navigate } from "react-router-dom";
+import { useParams, Link, Navigate, useNavigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { planLimits } from "../lib/plans";
+import { usePlans } from "../context/PlanContext";
 import DashboardHeader from "../components/DashboardHeader";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -14,7 +14,9 @@ import { ArrowLeft } from "lucide-react";
 
 export default function Settings() {
   const { businessId } = useParams();
+  const navigate = useNavigate();
   const { auth, updateBusiness } = useAuth();
+  const { planLimits } = usePlans();
   const businesses = auth?.businesses || [];
   const business = businesses.find((b) => b.id === businessId);
   const [form, setForm] = useState(null);
@@ -59,6 +61,7 @@ export default function Settings() {
       });
       updateBusiness(data);
       toast.success("Saved");
+      navigate(`/dashboard/${business.id}`);
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
     } finally {

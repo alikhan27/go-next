@@ -11,9 +11,6 @@ import {
 } from "../components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { Checkbox } from "../components/ui/checkbox";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Badge } from "../components/ui/badge";
@@ -58,6 +55,37 @@ function paymentMethodLabel(method) {
   return null;
 }
 
+function PaymentMethodCards({ value, onChange, testidPrefix = "payment-method" }) {
+  const options = [
+    { id: "cash", label: "Cash", hint: "Collected at the counter" },
+    { id: "online", label: "Online", hint: "UPI, card, or transfer" },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {options.map((option) => {
+        const active = value === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onChange(option.id)}
+            className={`rounded-xl border px-4 py-3 text-left transition-colors ${
+              active
+                ? "border-[#C47C5C] bg-[#F4EFE8]"
+                : "border-stone-200 bg-white hover:border-stone-300"
+            }`}
+            data-testid={`${testidPrefix}-${option.id}`}
+          >
+            <span className="block text-sm font-medium text-stone-900">{option.label}</span>
+            <span className="mt-1 block text-xs text-stone-500">{option.hint}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { businessId } = useParams();
   const { auth, updateBusiness } = useAuth();
@@ -65,6 +93,7 @@ export default function Dashboard() {
   const business = businesses.find((b) => b.id === businessId);
   const [tickets, setTickets] = useState([]);
   const [recent, setRecent] = useState([]);
+  const [recentMeta, setRecentMeta] = useState({ page: 1, page_size: 10, total: 0, total_pages: 1 });
   const [services, setServices] = useState([]);
   const [stats, setStats] = useState({ waiting: 0, serving: 0, completed_today: 0, no_show_today: 0, revenue_today: 0 });
   const [walkInOpen, setWalkInOpen] = useState(false);
@@ -73,11 +102,11 @@ export default function Dashboard() {
   const [completeOpen, setCompleteOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [ticketToComplete, setTicketToComplete] = useState(null);
-  const [completion, setCompletion] = useState({ service_ids: [], final_amount: "0", paid: false, payment_method: "cash", amountDirty: false });
+  const [completion, setCompletion] = useState({ service_ids: [], final_amount: "0", payment_method: "", amountDirty: false });
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentTarget, setPaymentTarget] = useState(null);
-  const [paymentMethodChoice, setPaymentMethodChoice] = useState("cash");
+  const [paymentMethodChoice, setPaymentMethodChoice] = useState("");
 
   useEffect(() => {
     if (business) setIsOnline(!!business.is_online);
@@ -89,17 +118,24 @@ export default function Dashboard() {
       const [q, s, r, svc] = await Promise.all([
         api.get(`/business/${business.id}/queue`),
         api.get(`/business/${business.id}/stats`),
-        api.get(`/business/${business.id}/recent-completed`),
+        api.get(`/business/${business.id}/recent-completed?page=${recentMeta.page}&page_size=${recentMeta.page_size}`),
         api.get(`/business/${business.id}/services`).catch(() => ({ data: [] })),
       ]);
       setTickets(q.data);
       setStats(s.data);
-      setRecent(r.data);
+      setRecent(r.data.items || []);
+      setRecentMeta((prev) => ({
+        ...prev,
+        page: r.data.page || prev.page,
+        page_size: r.data.page_size || prev.page_size,
+        total: r.data.total || 0,
+        total_pages: r.data.total_pages || 1,
+      }));
       setServices((svc.data || []).filter((item) => item.is_active !== false));
     } catch {
       /* ignore */
     }
-  }, [business]);
+  }, [business, recentMeta.page, recentMeta.page_size]);
 
   useEffect(() => {
     load();
@@ -201,8 +237,7 @@ export default function Dashboard() {
     setCompletion({
       service_ids: selectedIds,
       final_amount: String(baseAmount || 0),
-      paid: !!ticket.paid,
-      payment_method: ticket.payment_method || "cash",
+      payment_method: ticket.payment_method || "",
       amountDirty: false,
     });
     setCompleteOpen(true);
@@ -225,7 +260,7 @@ export default function Dashboard() {
       await api.post(`/business/${business.id}/queue/${ticketToComplete.id}/complete`, {
         service_ids: completion.service_ids,
         final_amount: Number(completion.final_amount) || 0,
-        paid: completion.paid,
+        paid: !!completion.payment_method,
         payment_method: completion.payment_method,
       });
       toast.success("Ticket completed");
@@ -239,9 +274,16 @@ export default function Dashboard() {
     }
   };
 
+  const goToRecentPage = (page) => {
+    setRecentMeta((prev) => ({
+      ...prev,
+      page: Math.max(1, Math.min(page, prev.total_pages || 1)),
+    }));
+  };
+
   const openPaymentDialog = (ticket) => {
     setPaymentTarget(ticket);
-    setPaymentMethodChoice(ticket.payment_method || "cash");
+    setPaymentMethodChoice(ticket.payment_method || "");
     setPaymentOpen(true);
   };
 
@@ -439,9 +481,9 @@ export default function Dashboard() {
             >
               <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
-                  <DialogTitle className="font-serif-display text-2xl">Collect payment</DialogTitle>
+                  <DialogTitle className="font-serif-display text-2xl">Checkout</DialogTitle>
                   <DialogDescription>
-                    Confirm the services provided, adjust the amount if needed, then mark the ticket as done.
+                    Confirm the services provided, choose the payment method, and finish the checkout in one step.
                   </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={submitCompletion} className="space-y-5" data-testid="complete-ticket-form">
@@ -508,31 +550,18 @@ export default function Dashboard() {
                       </p>
                     </div>
                     <div className="space-y-3">
-                      <label className="flex w-full items-center gap-3 rounded-xl border border-stone-200 px-4 py-3">
-                        <Checkbox
-                          checked={completion.paid}
-                          onCheckedChange={(checked) => setCompletion((prev) => ({ ...prev, paid: !!checked }))}
-                          data-testid="complete-ticket-paid"
-                        />
-                        <span>
-                          <span className="block text-sm font-medium text-stone-900">Payment received</span>
-                          <span className="block text-xs text-stone-500">Required before marking the ticket done.</span>
-                        </span>
-                      </label>
                       <div>
                         <Label>Paid by</Label>
-                        <Select
-                          value={completion.payment_method}
-                          onValueChange={(value) => setCompletion((prev) => ({ ...prev, payment_method: value }))}
-                        >
-                          <SelectTrigger className="mt-1.5 h-11 rounded-xl border-stone-300 bg-white" data-testid="complete-ticket-payment-method">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="cash">Cash</SelectItem>
-                            <SelectItem value="online">Online</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <p className="mt-1 text-xs text-stone-500">
+                          Optional. Choose a method now to complete this ticket as paid.
+                        </p>
+                        <div className="mt-2">
+                          <PaymentMethodCards
+                            value={completion.payment_method}
+                            onChange={(value) => setCompletion((prev) => ({ ...prev, payment_method: value }))}
+                            testidPrefix="complete-ticket-payment-method"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -540,11 +569,15 @@ export default function Dashboard() {
                   <DialogFooter>
                     <Button
                       type="submit"
-                      disabled={completing || !completion.paid}
+                      disabled={completing}
                       className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white h-11 px-6"
                       data-testid="complete-ticket-submit"
                     >
-                      {completing ? "Finishing…" : "Mark as done"}
+                      {completing
+                        ? "Finishing checkout…"
+                        : completion.payment_method
+                          ? "Complete & mark paid"
+                          : "Complete without payment"}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -576,20 +609,21 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <Label>Paid by</Label>
-                    <Select value={paymentMethodChoice} onValueChange={setPaymentMethodChoice}>
-                      <SelectTrigger className="mt-1.5 h-11 rounded-xl border-stone-300 bg-white" data-testid="payment-method-select">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="online">Online</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <p className="mt-1 text-xs text-stone-500">
+                      Choose how this payment came in.
+                    </p>
+                    <div className="mt-2">
+                      <PaymentMethodCards
+                        value={paymentMethodChoice}
+                        onChange={setPaymentMethodChoice}
+                        testidPrefix="payment-method-select"
+                      />
+                    </div>
                   </div>
                   <DialogFooter>
                     <Button
                       type="submit"
-                      disabled={paymentSubmitting}
+                      disabled={paymentSubmitting || !paymentMethodChoice}
                       className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white h-11 px-6"
                       data-testid="payment-method-submit"
                     >
@@ -657,37 +691,11 @@ export default function Dashboard() {
                         )}
                         {t.status === "serving" && (
                           <>
-                            {t.service_price > 0 && (
-                              t.paid ? (
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white"
-                                  onClick={() => togglePaid(t.id, false)}
-                                  title="Tap to mark unpaid"
-                                  data-testid={`paid-toggle-${t.token_number}`}
-                                >
-                                  <BadgeCheck className="h-3.5 w-3.5 mr-1" />
-                                  Paid{paymentMethodLabel(t.payment_method) ? ` · ${paymentMethodLabel(t.payment_method)}` : ""} · ₹{Number(t.service_price).toLocaleString("en-IN")}
-                                </Button>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="rounded-full border-[#C47C5C]/40 text-[#A86246] hover:bg-[#F4EFE8]"
-                                  onClick={() => openPaymentDialog(t)}
-                                  title="Choose payment method"
-                                  data-testid={`paid-toggle-${t.token_number}`}
-                                >
-                                  Mark paid · ₹{Number(t.service_price).toLocaleString("en-IN")}
-                                </Button>
-                              )
-                            )}
                             <Button size="sm"
                               className="rounded-full bg-[#7D9276] hover:bg-[#6a8064] text-white"
                               onClick={() => openCompleteDialog(t)}
                               data-testid={`complete-${t.token_number}`}>
-                              <Check className="h-3.5 w-3.5 mr-1" /> Done
+                              <Check className="h-3.5 w-3.5 mr-1" /> Checkout
                             </Button>
                           </>
                         )}
@@ -714,7 +722,7 @@ export default function Dashboard() {
                       <p className="mt-1 text-sm text-stone-500">Recent checkouts, payment status, and services provided.</p>
                     </div>
                     <div className="rounded-full border border-stone-200 bg-white px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-stone-500">
-                      {recent.length} of last 10
+                      Page {recentMeta.page} of {recentMeta.total_pages}
                     </div>
                   </div>
 
@@ -803,6 +811,39 @@ export default function Dashboard() {
                       </div>
                     ))}
                   </div>
+                  {recentMeta.total > 0 && (
+                    <div className="mt-4 flex items-center justify-between gap-3 border-t border-stone-200 pt-4">
+                      <p className="text-xs text-stone-500">
+                        Showing {Math.min(((recentMeta.page - 1) * recentMeta.page_size) + 1, recentMeta.total)}
+                        {" - "}
+                        {Math.min(recentMeta.page * recentMeta.page_size, recentMeta.total)}
+                        {" of "}
+                        {recentMeta.total}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-full border-stone-300"
+                          onClick={() => goToRecentPage(recentMeta.page - 1)}
+                          disabled={recentMeta.page <= 1}
+                          data-testid="recent-prev-page"
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-full border-stone-300"
+                          onClick={() => goToRecentPage(recentMeta.page + 1)}
+                          disabled={recentMeta.page >= recentMeta.total_pages}
+                          data-testid="recent-next-page"
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

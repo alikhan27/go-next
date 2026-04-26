@@ -131,10 +131,10 @@ async def complete_ticket(
         raise HTTPException(status_code=404, detail="Ticket not found")
     if t.get("status") != "serving":
         raise HTTPException(status_code=400, detail="Only serving tickets can be completed")
-    if not body.paid:
-        raise HTTPException(status_code=400, detail="Mark payment received before completing")
-    if not body.payment_method:
+    if body.paid and not body.payment_method:
         raise HTTPException(status_code=400, detail="Choose cash or online before completing")
+    if body.payment_method and not body.paid:
+        raise HTTPException(status_code=400, detail="Payment method can only be set for paid tickets")
 
     services = await resolve_services_for_ticket(
         business_id,
@@ -144,9 +144,9 @@ async def complete_ticket(
     updates = {
         "status": "completed",
         "finished_at": now_iso,
-        "paid": True,
-        "payment_method": body.payment_method,
-        "paid_at": now_iso,
+        "paid": bool(body.paid),
+        "payment_method": body.payment_method if body.paid else None,
+        "paid_at": now_iso if body.paid else None,
         "service_price": float(body.final_amount or 0),
     }
     updates.update(ticket_service_fields(services))
@@ -156,26 +156,43 @@ async def complete_ticket(
 
 
 @router.get("/recent-completed")
-async def recent_completed(business_id: str, user: dict = Depends(get_current_user)):
+async def recent_completed(
+    business_id: str,
+    page: int = 1,
+    page_size: int = 10,
+    user: dict = Depends(get_current_user),
+):
     """Last 10 completed tickets from today — used by the Dashboard so
     owners can flip the paid toggle after the fact (most salons collect
     payment after the service, not before)."""
     await owned_business_or_404(user["id"], business_id)
+    page = max(1, int(page))
+    page_size = max(1, min(int(page_size), 50))
+    skip = (page - 1) * page_size
     today = datetime.now(timezone.utc).date().isoformat()
+    query = {
+        "business_id": business_id,
+        "status": "completed",
+        "finished_at": {"$regex": f"^{today}"},
+    }
+    total = await db.queue.count_documents(query)
     docs = (
         await db.queue.find(
-            {
-                "business_id": business_id,
-                "status": "completed",
-                "finished_at": {"$regex": f"^{today}"},
-            },
+            query,
             {"_id": 0},
         )
         .sort("finished_at", -1)
-        .limit(10)
-        .to_list(10)
+        .skip(skip)
+        .limit(page_size)
+        .to_list(page_size)
     )
-    return [public_ticket(t) for t in docs]
+    return {
+        "items": [public_ticket(t) for t in docs],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": max(1, (total + page_size - 1) // page_size),
+    }
 
 
 @router.post("/queue/call-next")

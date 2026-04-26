@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { usePlans } from "../context/PlanContext";
 import DashboardHeader from "../components/DashboardHeader";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -16,10 +17,9 @@ import {
 } from "../components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Plus, MapPin, Building2, ArrowRight, Trash2 } from "lucide-react";
-import { isPaidPlan, planLimits, planLabel } from "../lib/plans";
-
 export default function Outlets() {
   const { auth, addBusiness, removeBusiness } = useAuth();
+  const { isPaidPlan, planLimits, planLabel } = usePlans();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);

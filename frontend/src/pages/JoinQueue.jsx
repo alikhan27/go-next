@@ -119,10 +119,21 @@ export default function JoinQueue() {
     <div className="min-h-screen bg-[#F9F8F6] text-[#2C302E]">
       <div className="warm-hero-gradient grain">
         <div className="mx-auto max-w-md px-5 pt-12 pb-10">
-          <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Join the queue</p>
-          <h1 className="font-serif-display mt-3 text-4xl sm:text-5xl leading-none">{business.business_name}</h1>
+          <div className="flex items-center justify-center">
+            <div className="inline-flex items-center gap-3 rounded-full border border-stone-200/80 bg-white/90 px-4 py-2.5 shadow-sm backdrop-blur-xl">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#C47C5C] text-white font-serif-display text-lg">
+                g
+              </div>
+              <div className="text-left">
+                <p className="text-[10px] uppercase tracking-[0.22em] text-stone-500">Queue by</p>
+                <p className="text-sm font-semibold leading-none text-[#2C302E]">Go-Next</p>
+              </div>
+            </div>
+          </div>
+          <p className="mt-5 text-[11px] uppercase tracking-[0.26em] text-[#A86246] text-center">Join the queue</p>
+          <h1 className="font-serif-display mt-3 text-4xl sm:text-5xl leading-none text-center">{business.business_name}</h1>
           {business.address && (
-            <p className="mt-2 text-sm text-stone-600 flex items-center gap-1.5">
+            <p className="mt-2 text-sm text-stone-600 flex items-center justify-center gap-1.5 text-center">
               <MapPin className="h-3.5 w-3.5" /> {business.address}{business.city ? `, ${business.city}` : ""}
             </p>
           )}

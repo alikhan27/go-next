@@ -2,8 +2,8 @@ import { useMemo, useState } from "react";
 import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "../context/AuthContext";
+import { usePlans } from "../context/PlanContext";
 import { api, formatApiErrorDetail } from "../lib/api";
-import { planLimits, planLabel } from "../lib/plans";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -50,6 +50,7 @@ export default function Onboarding() {
   const { businessId } = useParams();
   const navigate = useNavigate();
   const { auth, updateBusiness } = useAuth();
+  const { planLimits, planLabel } = usePlans();
   const businesses = auth?.businesses || [];
   const business = businesses.find((b) => b.id === businessId);
 

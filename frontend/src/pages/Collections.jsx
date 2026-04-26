@@ -3,7 +3,7 @@ import { useParams, Navigate } from "react-router-dom";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { planLimits } from "../lib/plans";
+import { usePlans } from "../context/PlanContext";
 import DashboardHeader from "../components/DashboardHeader";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -30,9 +30,11 @@ function statusBadge(paid) {
 export default function Collections() {
   const { businessId } = useParams();
   const { auth } = useAuth();
+  const { isPaidPlan, planLimits, planLabel } = usePlans();
   const businesses = auth?.businesses || [];
   const business = businesses.find((b) => b.id === businessId);
   const planMaxDays = planLimits(auth?.user).analytics_days;
+  const paidPlan = isPaidPlan(auth?.user);
   const rangeOptions = useMemo(
     () => [1, 7, 14, 30, 90, 180].filter((d) => d <= planMaxDays),
     [planMaxDays],
@@ -44,6 +46,12 @@ export default function Collections() {
   const [data, setData] = useState(null);
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!paidPlan && days !== 7) {
+      setDays(7);
+    }
+  }, [days, paidPlan]);
 
   const load = useCallback(async () => {
     if (!business) return;
@@ -87,19 +95,32 @@ export default function Collections() {
           <div>
             <p className="text-[11px] uppercase tracking-[0.26em] text-[#A86246]">Collections</p>
             <h1 className="font-serif-display text-4xl sm:text-5xl mt-2 leading-none">{business.business_name}</h1>
-            <p className="mt-2 text-stone-600 text-sm">Track what came in each day and filter down to the tickets behind it.</p>
+            <p className="mt-2 text-stone-600 text-sm">
+              {paidPlan
+                ? "Track what came in each day and filter down to the tickets behind it."
+                : "Track the last 7 days of collections. Upgrade for longer date ranges."}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
-              <SelectTrigger className="h-10 w-[140px] rounded-full border-stone-300 bg-white" data-testid="collections-range">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {rangeOptions.map((d) => (
-                  <SelectItem key={d} value={String(d)}>{d === 1 ? "Today" : `Last ${d} days`}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {paidPlan ? (
+              <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
+                <SelectTrigger className="h-10 w-[140px] rounded-full border-stone-300 bg-white" data-testid="collections-range">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {rangeOptions.map((d) => (
+                    <SelectItem key={d} value={String(d)}>{d === 1 ? "Today" : `Last ${d} days`}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div
+                className="inline-flex h-10 items-center rounded-full border border-stone-200 bg-white px-4 text-sm text-stone-700"
+                data-testid="collections-range-fixed"
+              >
+                Last 7 days
+              </div>
+            )}
 
             <Select value={paidFilter} onValueChange={setPaidFilter}>
               <SelectTrigger className="h-10 w-[140px] rounded-full border-stone-300 bg-white" data-testid="collections-paid-filter">
@@ -136,6 +157,15 @@ export default function Collections() {
             </Select>
           </div>
         </div>
+
+        {!paidPlan && (
+          <div className="mt-5 rounded-2xl border border-[#E3D9C8] bg-[#F4EFE8] px-5 py-4" data-testid="collections-upgrade-note">
+            <p className="text-sm text-stone-700">
+              <span className="font-medium">{planLabel(auth?.user)} plan:</span> collections stay available for the last 7 days.
+              Upgrade to Premium or Premium Plus to unlock 14, 30, 90, and 180 day views.
+            </p>
+          </div>
+        )}
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard

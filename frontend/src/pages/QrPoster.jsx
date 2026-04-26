@@ -1,7 +1,7 @@
-import { useMemo, useRef } from "react";
-import { useParams, Link, Navigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams, Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { useAuth } from "../context/AuthContext";
+import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { ArrowLeft, Printer, Download } from "lucide-react";
 
@@ -12,19 +12,61 @@ import { ArrowLeft, Printer, Download } from "lucide-react";
  */
 export default function QrPoster() {
   const { businessId } = useParams();
-  const { auth } = useAuth();
-  const businesses = auth?.businesses || [];
-  const business = businesses.find((b) => b.id === businessId);
   const posterRef = useRef(null);
+  const [business, setBusiness] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    async function loadBusiness() {
+      try {
+        const { data } = await api.get(`/public/business/${businessId}`);
+        if (!active) return;
+        setBusiness(data);
+        setError(null);
+      } catch (err) {
+        if (!active) return;
+        setError(err.response?.data?.detail || "Couldn't load poster");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    loadBusiness();
+    return () => {
+      active = false;
+    };
+  }, [businessId]);
 
   const joinUrl = useMemo(
     () => (business ? `${window.location.origin}/join/${business.id}` : ""),
     [business],
   );
 
-  if (auth === null) return null;
-  if (!auth || auth === false) return <Navigate to="/login" replace />;
-  if (!business) return <Navigate to="/dashboard" replace />;
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#EDE8DF] text-stone-500">
+        Preparing poster…
+      </div>
+    );
+  }
+
+  if (error || !business) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#EDE8DF] px-5 text-center">
+        <div className="max-w-md">
+          <h1 className="font-serif-display text-3xl text-[#2C302E]">Poster unavailable</h1>
+          <p className="mt-2 text-sm text-stone-600">{error || "We couldn't load this outlet."}</p>
+          <Link
+            to="/login"
+            className="mt-6 inline-flex items-center gap-2 text-sm text-[#A86246] underline underline-offset-4"
+          >
+            Go to login
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const downloadSvg = () => {
     const svg = posterRef.current?.querySelector("svg");

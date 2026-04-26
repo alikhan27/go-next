@@ -2,8 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { usePlans } from "../context/PlanContext";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Switch } from "../components/ui/switch";
+import { Textarea } from "../components/ui/textarea";
 import {
   Tabs,
   TabsContent,
@@ -55,6 +60,7 @@ import {
   Tv,
   ShieldCheck,
   KeyRound,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Palette } from "lucide-react";
 import { useTheme, THEMES } from "../context/ThemeContext";
@@ -80,12 +86,16 @@ function Stat({ label, value, accent, hint, testid }) {
 
 export default function AdminPanel() {
   const { auth, logout } = useAuth();
+  const { catalog, setCatalog } = usePlans();
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [outlets, setOutlets] = useState([]);
   const [lockouts, setLockouts] = useState([]);
+  const [plans, setPlans] = useState([]);
+  const [pendingUsers, setPendingUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [savingPlans, setSavingPlans] = useState({});
   const { theme, updateTheme } = useTheme();
   const t = THEMES.find((th) => th.id === theme.theme_id) || THEMES[0];
   const c = t.vars;
@@ -104,16 +114,25 @@ export default function AdminPanel() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, u, o, l] = await Promise.all([
+      const [s, u, o, l, p, pu] = await Promise.all([
         api.get("/admin/stats"),
         api.get("/admin/users"),
         api.get("/admin/businesses"),
         api.get("/admin/security/lockouts"),
+        api.get("/admin/plans"),
+        api.get("/admin/users/pending"),
       ]);
       setStats(s.data);
       setUsers(u.data);
       setOutlets(o.data);
       setLockouts(l.data);
+      setPlans(
+        (p.data?.plans || []).map((plan) => ({
+          ...plan,
+          features_text: (plan.features || []).join("\n"),
+        })),
+      );
+      setPendingUsers(pu.data || []);
     } catch (err) {
       toast.error(
         formatApiErrorDetail(err.response?.data?.detail) || err.message,
@@ -175,6 +194,80 @@ export default function AdminPanel() {
     }
   };
 
+  const approveUser = async (userId) => {
+    try {
+      await api.post(`/admin/users/${userId}/approve`);
+      toast.success("User approved");
+      load();
+    } catch (err) {
+      toast.error(
+        formatApiErrorDetail(err.response?.data?.detail) || err.message,
+      );
+    }
+  };
+
+  const rejectUser = async (userId) => {
+    try {
+      await api.post(`/admin/users/${userId}/reject`);
+      toast.success("User rejected");
+      load();
+    } catch (err) {
+      toast.error(
+        formatApiErrorDetail(err.response?.data?.detail) || err.message,
+      );
+    }
+  };
+
+  const updatePlanDraft = (planId, key, value) => {
+    setPlans((prev) =>
+      prev.map((plan) =>
+        plan.id === planId ? { ...plan, [key]: value } : plan,
+      ),
+    );
+  };
+
+  const savePlan = async (planId) => {
+    const plan = plans.find((item) => item.id === planId);
+    if (!plan) return;
+    setSavingPlans((prev) => ({ ...prev, [planId]: true }));
+    try {
+      const payload = {
+        max_outlets: Number(plan.max_outlets) || 1,
+        max_stations: Number(plan.max_stations) || 1,
+        max_tokens_per_day: Number(plan.max_tokens_per_day) || 1,
+        analytics_days: Number(plan.analytics_days) || 1,
+        can_manage_services: !!plan.can_manage_services,
+        max_services: Number(plan.max_services) || 0,
+        features: String(plan.features_text || "")
+          .split("\n")
+          .map((item) => item.trim())
+          .filter(Boolean),
+      };
+      const { data } = await api.patch(`/admin/plans/${planId}`, payload);
+      setPlans((prev) =>
+        prev.map((item) =>
+          item.id === planId
+            ? { ...data, features_text: (data.features || []).join("\n") }
+            : item,
+        ),
+      );
+      setCatalog((prev) => ({
+        ...prev,
+        [planId]: {
+          ...(prev?.[planId] || {}),
+          ...data,
+        },
+      }));
+      toast.success(`${data.label || data.name} updated`);
+    } catch (err) {
+      toast.error(
+        formatApiErrorDetail(err.response?.data?.detail) || err.message,
+      );
+    } finally {
+      setSavingPlans((prev) => ({ ...prev, [planId]: false }));
+    }
+  };
+
   const handleLogout = async () => {
     await logout();
     navigate("/");
@@ -224,7 +317,7 @@ export default function AdminPanel() {
         }}
       >
         {" "}
-        <div className="mx-auto max-w-6xl px-5 py-3 flex flex-wrap items-center gap-3">
+        <div className="w-full px-5 py-3 flex flex-wrap items-center gap-3">
           <Link to="/" className="flex items-center gap-2">
             <div
               className="flex h-8 w-8 items-center justify-center rounded-full text-white font-serif-display"
@@ -279,7 +372,7 @@ export default function AdminPanel() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-5 py-10">
+      <main className="w-full px-5 py-10">
         <p
           className="text-[11px] uppercase tracking-[0.26em]"
           style={{ color: c["--app-accent-text"] }}
@@ -325,6 +418,18 @@ export default function AdminPanel() {
         <Tabs defaultValue="users" className="mt-10">
           <TabsList className="bg-white border border-stone-200 rounded-full p-1">
             <TabsTrigger
+              value="pending"
+              className="rounded-full data-[state=active]:bg-[#F4EFE8] data-[state=active]:text-[#A86246]"
+              data-testid="admin-tab-pending"
+            >
+              <Shield className="h-3.5 w-3.5 mr-1.5" /> Pending
+              {pendingUsers.length > 0 && (
+                <span className="ml-1.5 h-4 w-4 rounded-full bg-[#A86246] text-[10px] text-white flex items-center justify-center">
+                  {pendingUsers.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger
               value="users"
               className="rounded-full data-[state=active]:bg-[#F4EFE8] data-[state=active]:text-[#A86246]"
               data-testid="admin-tab-users"
@@ -362,7 +467,75 @@ export default function AdminPanel() {
             >
               <Palette className="h-3.5 w-3.5 mr-1.5" /> Theme
             </TabsTrigger>
+            <TabsTrigger
+              value="plans"
+              className="rounded-full data-[state=active]:bg-[#F4EFE8] data-[state=active]:text-[#A86246]"
+              data-testid="admin-tab-plans"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" /> Plans
+            </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="pending" className="mt-6">
+            <div
+              className="rounded-2xl border border-stone-200 bg-white overflow-hidden"
+              data-testid="admin-pending-table"
+            >
+              {pendingUsers.length === 0 ? (
+                <div className="p-12 text-center text-stone-500">
+                  <Shield className="h-12 w-12 mx-auto mb-4 text-stone-300" />
+                  <p>No pending registrations</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Owner</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Plan</TableHead>
+                      <TableHead>Joined</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingUsers.map((u) => (
+                      <TableRow key={u.id}>
+                        <TableCell className="font-medium">{u.name}</TableCell>
+                        <TableCell>{u.email}</TableCell>
+                        <TableCell>
+                          <span className={planStyle(u.plan)}>
+                            {planLabelText(u.plan)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-stone-500">
+                          {u.created_at
+                            ? new Date(u.created_at).toLocaleDateString()
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            className="mr-2 rounded-full bg-[#4c6547] hover:bg-[#3d5337] text-white"
+                            onClick={() => approveUser(u.id)}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-full border-stone-300"
+                            onClick={() => rejectUser(u.id)}
+                          >
+                            Reject
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          </TabsContent>
 
           <TabsContent value="users" className="mt-6">
             <div
@@ -917,6 +1090,179 @@ export default function AdminPanel() {
                   ? "Saving…"
                   : `Active theme: ${THEMES.find((t) => t.theme_id === theme.theme_id || t.id === theme.theme_id)?.name || "Warm Sand"}`}
               </p>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="plans" className="mt-6">
+            <div
+              className="grid gap-5 lg:grid-cols-3"
+              data-testid="admin-plans"
+            >
+              {plans.map((plan) => (
+                <div
+                  key={plan.id}
+                  className="rounded-2xl border border-stone-200 bg-white p-6"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.22em] text-stone-500">
+                        {plan.id.replace("_", " ")}
+                      </p>
+                      <h3 className="font-serif-display text-2xl mt-2">
+                        {plan.label || plan.name}
+                      </h3>
+                      <p className="mt-1 text-xs text-stone-500">
+                        {plan.price_monthly > 0
+                          ? `$${plan.price_monthly}/mo`
+                          : "Free"}
+                      </p>
+                    </div>
+                    <Badge
+                      className={`rounded-full border font-normal ${planStyle(plan.id)}`}
+                    >
+                      {planLabelText(plan.id)}
+                    </Badge>
+                  </div>
+
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <Label>Max outlets</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        className="mt-1.5 h-10"
+                        value={plan.max_outlets}
+                        onChange={(e) =>
+                          updatePlanDraft(
+                            plan.id,
+                            "max_outlets",
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label>Max stations</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        className="mt-1.5 h-10"
+                        value={plan.max_stations}
+                        onChange={(e) =>
+                          updatePlanDraft(
+                            plan.id,
+                            "max_stations",
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label>Daily token limit</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        className="mt-1.5 h-10"
+                        value={plan.max_tokens_per_day}
+                        onChange={(e) =>
+                          updatePlanDraft(
+                            plan.id,
+                            "max_tokens_per_day",
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label>Analytics / collections days</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        className="mt-1.5 h-10"
+                        value={plan.analytics_days}
+                        onChange={(e) =>
+                          updatePlanDraft(
+                            plan.id,
+                            "analytics_days",
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label>Max services</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        className="mt-1.5 h-10"
+                        value={plan.max_services}
+                        onChange={(e) =>
+                          updatePlanDraft(
+                            plan.id,
+                            "max_services",
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="rounded-xl border border-stone-200 px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-stone-900">
+                            Custom services
+                          </p>
+                          <p className="text-xs text-stone-500">
+                            Enable service catalog management
+                          </p>
+                        </div>
+                        <Switch
+                          checked={!!plan.can_manage_services}
+                          onCheckedChange={(checked) =>
+                            updatePlanDraft(
+                              plan.id,
+                              "can_manage_services",
+                              checked,
+                            )
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <Label>Feature list</Label>
+                    <Textarea
+                      className="mt-1.5 min-h-[180px]"
+                      value={
+                        plan.features_text ?? (plan.features || []).join("\n")
+                      }
+                      onChange={(e) =>
+                        updatePlanDraft(
+                          plan.id,
+                          "features_text",
+                          e.target.value,
+                        )
+                      }
+                      placeholder={"One feature per line"}
+                    />
+                    <p className="mt-1 text-xs text-stone-500">
+                      This list is used on the public pricing page and
+                      plan-aware UI.
+                    </p>
+                  </div>
+
+                  <div className="mt-5 flex justify-end">
+                    <Button
+                      onClick={() => savePlan(plan.id)}
+                      disabled={!!savingPlans[plan.id]}
+                      className="rounded-full bg-[#2C302E] hover:bg-[#1d201f] text-white"
+                      data-testid={`save-plan-${plan.id}`}
+                    >
+                      {savingPlans[plan.id] ? "Saving…" : "Save changes"}
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           </TabsContent>
         </Tabs>

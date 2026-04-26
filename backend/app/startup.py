@@ -7,6 +7,7 @@ from pymongo import ASCENDING
 from .config import LOCKOUT_WINDOW_MINUTES
 from .db import db
 from .security import hash_password
+from .services import apply_plan_catalog
 
 
 async def ensure_indexes() -> None:
@@ -144,3 +145,8 @@ async def seed_demo_data() -> None:
             "plan": "premium",
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
+
+
+async def load_runtime_settings() -> None:
+    settings = await db.settings.find_one({"key": "plan_catalog"}, {"_id": 0, "value": 1})
+    apply_plan_catalog((settings or {}).get("value"))

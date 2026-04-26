@@ -48,17 +48,24 @@ export default function Register() {
     setLoading(true);
     try {
       const data = await register(form);
-      toast.success("Your business is live");
-      const firstBusiness = data?.businesses?.[0];
-      if (firstBusiness) {
-        navigate(`/dashboard/${firstBusiness.id}/onboarding`);
-      } else {
-        navigate("/dashboard");
-      }
+      toast.success("Account created! Awaiting super admin approval.");
+      navigate("/login");
     } catch (err) {
-      toast.error(
-        formatApiErrorDetail(err.response?.data?.detail) || err.message,
-      );
+      // If backend blocks login due to pending approval, show a clear message
+      const detail = err?.response?.data?.detail;
+      if (
+        typeof detail === "string" &&
+        detail.toLowerCase().includes("pending approval")
+      ) {
+        toast.info(
+          "Account created! Awaiting super admin approval. You will be notified once approved."
+        );
+        navigate("/login");
+      } else {
+        toast.error(
+          formatApiErrorDetail(detail) || err.message,
+        );
+      }
     } finally {
       setLoading(false);
     }
