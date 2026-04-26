@@ -200,40 +200,6 @@ export default function AdminPanel() {
     [updateTheme],
   );
 
-  const approveUser = useCallback(
-    async (userId) => {
-      try {
-        await api.post(`/admin/users/${userId}/approve`);
-        toast.success("User approved!");
-        pendingUsersTable.refresh();
-        usersTable.refresh();
-        loadData(); // Refresh stats, lockouts etc.
-      } catch (err) {
-        toast.error(
-          formatApiErrorDetail(err.response?.data?.detail) || err.message,
-        );
-      }
-    },
-    [pendingUsersTable, usersTable],
-  );
-
-  const rejectUser = useCallback(
-    async (userId) => {
-      try {
-        await api.post(`/admin/users/${userId}/reject`);
-        toast.success("User rejected!");
-        pendingUsersTable.refresh();
-        rejectedUsersTable.refresh();
-        loadData(); // Refresh stats, lockouts etc.
-      } catch (err) {
-        toast.error(
-          formatApiErrorDetail(err.response?.data?.detail) || err.message,
-        );
-      }
-    },
-    [pendingUsersTable, rejectedUsersTable],
-  );
-
   const handleLogout = async () => {
     await logout();
     navigate("/");
@@ -264,6 +230,40 @@ export default function AdminPanel() {
       setLoading(false);
     }
   }, []); // Removed pendingUsersTable, rejectedUsersTable from dependencies
+
+  const approveUser = useCallback(
+    async (userId) => {
+      try {
+        await api.post(`/admin/users/${userId}/approve`);
+        toast.success("User approved!");
+        pendingUsersTable.refresh();
+        usersTable.refresh();
+        loadData(); // Refresh stats, lockouts etc.
+      } catch (err) {
+        toast.error(
+          formatApiErrorDetail(err.response?.data?.detail) || err.message,
+        );
+      }
+    },
+    [pendingUsersTable, usersTable, loadData],
+  );
+
+  const rejectUser = useCallback(
+    async (userId) => {
+      try {
+        await api.post(`/admin/users/${userId}/reject`);
+        toast.success("User rejected!");
+        pendingUsersTable.refresh();
+        rejectedUsersTable.refresh();
+        loadData(); // Refresh stats, lockouts etc.
+      } catch (err) {
+        toast.error(
+          formatApiErrorDetail(err.response?.data?.detail) || err.message,
+        );
+      }
+    },
+    [pendingUsersTable, rejectedUsersTable, loadData],
+  );
 
   useEffect(() => {
     loadData();
