@@ -376,15 +376,18 @@ export default function Collections() {
                         <span className="text-sm font-medium text-stone-900">
                           ₹{Number(row.service_price || 0).toLocaleString("en-IN")}
                         </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 w-7 p-0 hover:bg-stone-100"
-                          onClick={() => openAmountDialog(row)}
-                          data-testid={`edit-amount-${row.token_number}`}
-                        >
-                          <Edit2 className="h-3.5 w-3.5 text-stone-500" />
-                        </Button>
+                        {!row.paid && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 hover:bg-stone-100"
+                            onClick={() => openAmountDialog(row)}
+                            data-testid={`edit-amount-${row.token_number}`}
+                            title="Edit amount"
+                          >
+                            <Edit2 className="h-3.5 w-3.5 text-stone-500" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-stone-600">

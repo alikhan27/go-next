@@ -17,7 +17,7 @@ import { Badge } from "../components/ui/badge";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import {
-  Plus, UserPlus, Check, X, ChevronRight, Download, Copy, Tv, UserX, Printer, BadgeCheck,
+  Plus, UserPlus, Check, X, ChevronRight, Download, Copy, Tv, UserX, Printer, BadgeCheck, Loader2,
 } from "lucide-react";
 
 function StatCard({ label, value, accent, testid }) {
@@ -82,6 +82,9 @@ export default function Dashboard() {
   const [completing, setCompleting] = useState(false);
   const [ticketToComplete, setTicketToComplete] = useState(null);
   const [completion, setCompletion] = useState({ service_ids: [], final_amount: "0", payment_method: "", amountDirty: false });
+  const [addingWalkIn, setAddingWalkIn] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState({});
+  const [callingNext, setCallingNext] = useState(false);
 
   useEffect(() => {
     if (business) setIsOnline(!!business.is_online);
@@ -154,14 +157,18 @@ export default function Dashboard() {
 
   const addWalkIn = async (e) => {
     e.preventDefault();
+    if (addingWalkIn) return;
+    setAddingWalkIn(true);
     try {
       await api.post(`/business/${business.id}/queue/walk-in`, walkIn);
-      toast.success(`Added ${walkIn.customer_name}`);
       setWalkIn({ customer_name: "", customer_phone: "", service_ids: [] });
       setWalkInOpen(false);
-      load();
+      await load();
+      toast.success(`Added ${walkIn.customer_name} to queue`);
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    } finally {
+      setAddingWalkIn(false);
     }
   };
 
@@ -175,21 +182,35 @@ export default function Dashboard() {
   };
 
   const updateStatus = async (id, status) => {
+    if (updatingStatus[id]) return;
+    setUpdatingStatus(prev => ({ ...prev, [id]: true }));
     try {
       await api.patch(`/business/${business.id}/queue/${id}/status`, { status });
-      load();
+      await load();
+      const statusLabels = {
+        serving: "Started serving",
+        no_show: "Marked as no-show",
+        cancelled: "Cancelled ticket"
+      };
+      toast.success(statusLabels[status] || "Status updated");
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    } finally {
+      setUpdatingStatus(prev => ({ ...prev, [id]: false }));
     }
   };
 
   const callNext = async () => {
+    if (callingNext) return;
+    setCallingNext(true);
     try {
       await api.post(`/business/${business.id}/queue/call-next`);
-      toast.success("Next guest is up");
-      load();
+      await load();
+      toast.success("Next guest is now serving");
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    } finally {
+      setCallingNext(false);
     }
   };
 
@@ -242,7 +263,7 @@ export default function Dashboard() {
 
   const submitCompletion = async (e) => {
     e.preventDefault();
-    if (!ticketToComplete) return;
+    if (!ticketToComplete || completing) return;
     setCompleting(true);
     try {
       const finalAmount = Number(completion.final_amount) || 0;
@@ -254,17 +275,15 @@ export default function Dashboard() {
       const payload = {
         service_ids: completion.service_ids,
         final_amount: finalAmount,
-        paid: Boolean(shouldBePaid),  // Ensure it's a boolean
+        paid: Boolean(shouldBePaid),
         payment_method: shouldBePaid ? completion.payment_method : null,
       };
       
-      console.log("Completing ticket with payload:", payload);
-      
       await api.post(`/business/${business.id}/queue/${ticketToComplete.id}/complete`, payload);
-      toast.success("Ticket completed");
       setCompleteOpen(false);
       setTicketToComplete(null);
-      load();
+      await load();
+      toast.success("Ticket completed successfully");
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
     } finally {
@@ -416,19 +435,42 @@ export default function Dashboard() {
                         </div>
                       )}
                       <DialogFooter>
-                        <Button type="submit" className="rounded-full bg-foreground hover:bg-foreground/90 text-white h-11 px-6" data-testid="walkin-submit">
-                          Add to queue
+                        <Button 
+                          type="submit" 
+                          disabled={addingWalkIn}
+                          className="rounded-full bg-foreground hover:bg-foreground/90 text-white h-11 px-6" 
+                          data-testid="walkin-submit"
+                        >
+                          {addingWalkIn ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Adding...
+                            </>
+                          ) : (
+                            "Add to queue"
+                          )}
                         </Button>
                       </DialogFooter>
                     </form>
                   </DialogContent>
                 </Dialog>
-                <Button onClick={callNext}
+                <Button 
+                  onClick={callNext}
                   className="rounded-full bg-primary hover:bg-primary/90 text-white press"
-                  disabled={waiting.length === 0 || serving.length >= business.total_chairs}
-                  data-testid="call-next-btn">
-                  <ChevronRight className="h-4 w-4 mr-1" />
-                  Call next
+                  disabled={callingNext || waiting.length === 0 || serving.length >= business.total_chairs}
+                  data-testid="call-next-btn"
+                >
+                  {callingNext ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      Calling...
+                    </>
+                  ) : (
+                    <>
+                      <ChevronRight className="h-4 w-4 mr-1" />
+                      Call next
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -600,17 +642,37 @@ export default function Dashboard() {
                     <div className="flex justify-end gap-2">
                         {t.status === "waiting" && (
                           <>
-                            <Button size="sm" variant="outline" className="rounded-full border-stone-300"
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="rounded-full border-stone-300"
                               onClick={() => updateStatus(t.id, "serving")}
-                              disabled={serving.length >= business.total_chairs}
-                              data-testid={`serve-${t.token_number}`}>
-                              Start
+                              disabled={updatingStatus[t.id] || serving.length >= business.total_chairs}
+                              data-testid={`serve-${t.token_number}`}
+                            >
+                              {updatingStatus[t.id] ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Starting...
+                                </>
+                              ) : (
+                                "Start"
+                              )}
                             </Button>
-                            <Button size="sm" variant="ghost" className="rounded-full text-stone-500"
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="rounded-full text-stone-500"
                               onClick={() => updateStatus(t.id, "no_show")}
+                              disabled={updatingStatus[t.id]}
                               title="Mark no-show"
-                              data-testid={`noshow-${t.token_number}`}>
-                              <UserX className="h-3.5 w-3.5" />
+                              data-testid={`noshow-${t.token_number}`}
+                            >
+                              {updatingStatus[t.id] ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <UserX className="h-3.5 w-3.5" />
+                              )}
                             </Button>
                           </>
                         )}
@@ -625,10 +687,19 @@ export default function Dashboard() {
                           </>
                         )}
                         {t.status !== "completed" && t.status !== "cancelled" && t.status !== "no_show" && (
-                          <Button size="sm" variant="ghost" className="rounded-full text-stone-500"
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            className="rounded-full text-stone-500"
                             onClick={() => updateStatus(t.id, "cancelled")}
-                            data-testid={`cancel-${t.token_number}`}>
-                            <X className="h-3.5 w-3.5" />
+                            disabled={updatingStatus[t.id]}
+                            data-testid={`cancel-${t.token_number}`}
+                          >
+                            {updatingStatus[t.id] ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <X className="h-3.5 w-3.5" />
+                            )}
                           </Button>
                         )}
                       </div>
