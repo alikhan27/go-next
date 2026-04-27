@@ -224,9 +224,12 @@ async def complete_ticket(
         "paid": is_paid,
         "payment_method": body.payment_method if is_paid else None,
         "paid_at": now_iso if is_paid else None,
-        "service_price": final_amount,
     }
+    # Add service fields (but don't include service_price yet)
     updates.update(ticket_service_fields(services))
+    # Override with the actual final_amount from user input
+    updates["service_price"] = final_amount
+    
     await db.queue.update_one({"id": ticket_id}, {"$set": updates})
     updated = await db.queue.find_one({"id": ticket_id}, {"_id": 0})
     return public_ticket(updated)
