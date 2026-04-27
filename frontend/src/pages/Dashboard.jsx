@@ -246,12 +246,20 @@ export default function Dashboard() {
     setCompleting(true);
     try {
       const finalAmount = Number(completion.final_amount) || 0;
+      
+      // Determine if this should be marked as paid
+      const hasPaymentMethod = completion.payment_method && 
+                          (completion.payment_method === "cash" || completion.payment_method === "online");
+      const shouldBePaid = finalAmount > 0 && hasPaymentMethod;
+      
       const payload = {
         service_ids: completion.service_ids,
         final_amount: finalAmount,
-        paid: finalAmount > 0 ? !!completion.payment_method : false,
-        payment_method: finalAmount > 0 && completion.payment_method ? completion.payment_method : null,
+        paid: shouldBePaid,
+        payment_method: shouldBePaid ? completion.payment_method : null,
       };
+      
+      console.log("Completing ticket with payload:", payload);
       
       await api.post(`/business/${business.id}/queue/${ticketToComplete.id}/complete`, payload);
       toast.success("Ticket completed");
