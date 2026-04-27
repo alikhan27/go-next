@@ -247,15 +247,14 @@ export default function Dashboard() {
     try {
       const finalAmount = Number(completion.final_amount) || 0;
       
-      // Determine if this should be marked as paid
-      const hasPaymentMethod = completion.payment_method && 
-                          (completion.payment_method === "cash" || completion.payment_method === "online");
+      // Explicitly check if payment method is valid
+      const hasPaymentMethod = completion.payment_method === "cash" || completion.payment_method === "online";
       const shouldBePaid = finalAmount > 0 && hasPaymentMethod;
       
       const payload = {
         service_ids: completion.service_ids,
         final_amount: finalAmount,
-        paid: shouldBePaid,
+        paid: Boolean(shouldBePaid),  // Ensure it's a boolean
         payment_method: shouldBePaid ? completion.payment_method : null,
       };
       
