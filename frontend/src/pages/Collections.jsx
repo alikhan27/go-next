@@ -176,7 +176,6 @@ export default function Collections() {
         paid: false,
         payment_method: null,
       });
-      toast.success("Marked as unpaid");
       load();
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
