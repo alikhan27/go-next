@@ -36,25 +36,6 @@ function statusStyle(status) {
   return "bg-red-50 text-red-600 border-red-100";
 }
 
-function serviceListForTicket(ticket) {
-  if (Array.isArray(ticket.service_names) && ticket.service_names.length > 0) {
-    return ticket.service_names.filter(Boolean);
-  }
-  if (ticket.service_name) {
-    return ticket.service_name
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  return [];
-}
-
-function paymentMethodLabel(method) {
-  if (method === "online") return "Online";
-  if (method === "cash") return "Cash";
-  return null;
-}
-
 function PaymentMethodCards({ value, onChange, testidPrefix = "payment-method" }) {
   const options = [
     { id: "cash", label: "Cash", hint: "Collected at the counter" },
@@ -92,8 +73,6 @@ export default function Dashboard() {
   const businesses = auth?.businesses || [];
   const business = businesses.find((b) => b.id === businessId);
   const [tickets, setTickets] = useState([]);
-  const [recent, setRecent] = useState([]);
-  const [recentMeta, setRecentMeta] = useState({ page: 1, page_size: 10, total: 0, total_pages: 1 });
   const [services, setServices] = useState([]);
   const [stats, setStats] = useState({ waiting: 0, serving: 0, completed_today: 0, no_show_today: 0, revenue_today: 0 });
   const [walkInOpen, setWalkInOpen] = useState(false);
@@ -103,10 +82,6 @@ export default function Dashboard() {
   const [completing, setCompleting] = useState(false);
   const [ticketToComplete, setTicketToComplete] = useState(null);
   const [completion, setCompletion] = useState({ service_ids: [], final_amount: "0", payment_method: "", amountDirty: false });
-  const [paymentOpen, setPaymentOpen] = useState(false);
-  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
-  const [paymentTarget, setPaymentTarget] = useState(null);
-  const [paymentMethodChoice, setPaymentMethodChoice] = useState("");
 
   useEffect(() => {
     if (business) setIsOnline(!!business.is_online);
@@ -138,25 +113,16 @@ export default function Dashboard() {
   const load = useCallback(async () => {
     if (!business) return;
     try {
-      const [s, r, svc] = await Promise.all([
+      const [s, svc] = await Promise.all([
         api.get(`/business/${business.id}/stats`),
-        api.get(`/business/${business.id}/recent-completed?page=${recentMeta.page}&page_size=${recentMeta.page_size}`),
         api.get(`/business/${business.id}/services`).catch(() => ({ data: [] })),
       ]);
       setStats(s.data);
-      setRecent(r.data.items || []);
-      setRecentMeta((prev) => ({
-        ...prev,
-        page: r.data.page || prev.page,
-        page_size: r.data.page_size || prev.page_size,
-        total: r.data.total || 0,
-        total_pages: r.data.total_pages || 1,
-      }));
       setServices((svc.data || []).filter((item) => item.is_active !== false));
     } catch {
       /* ignore */
     }
-  }, [business, recentMeta.page, recentMeta.page_size]);
+  }, [business]);
 
   const waiting = useMemo(() => tickets.filter((t) => t.status === "waiting"), [tickets]);
   const serving = useMemo(() => tickets.filter((t) => t.status === "serving"), [tickets]);
@@ -211,16 +177,6 @@ export default function Dashboard() {
   const updateStatus = async (id, status) => {
     try {
       await api.patch(`/business/${business.id}/queue/${id}/status`, { status });
-      load();
-    } catch (err) {
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
-    }
-  };
-
-  const togglePaid = async (id, paid) => {
-    try {
-      await api.patch(`/business/${business.id}/queue/${id}/paid`, { paid, payment_method: paid ? "cash" : null });
-      toast.success(paid ? "Marked paid" : "Marked unpaid");
       load();
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
@@ -292,39 +248,6 @@ export default function Dashboard() {
     }
   };
 
-  const goToRecentPage = (page) => {
-    setRecentMeta((prev) => ({
-      ...prev,
-      page: Math.max(1, Math.min(page, prev.total_pages || 1)),
-    }));
-  };
-
-  const openPaymentDialog = (ticket) => {
-    setPaymentTarget(ticket);
-    setPaymentMethodChoice(ticket.payment_method || "");
-    setPaymentOpen(true);
-  };
-
-  const submitPaymentMethod = async (e) => {
-    e.preventDefault();
-    if (!paymentTarget) return;
-    setPaymentSubmitting(true);
-    try {
-      await api.patch(`/business/${business.id}/queue/${paymentTarget.id}/paid`, {
-        paid: true,
-        payment_method: paymentMethodChoice,
-      });
-      toast.success(`Marked paid via ${paymentMethodChoice}`);
-      setPaymentOpen(false);
-      setPaymentTarget(null);
-      load();
-    } catch (err) {
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
-    } finally {
-      setPaymentSubmitting(false);
-    }
-  };
-
   const toggleOnline = async (v) => {
     setIsOnline(v);
     try {
@@ -380,9 +303,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="Waiting" value={stats.waiting} accent="text-primary" testid="stat-waiting" />
           <StatCard label="Serving" value={stats.serving} accent="text-success" testid="stat-serving" />
+          <StatCard label="Done today" value={stats.completed_today} testid="stat-done" />
           <StatCard label="No-shows today" value={stats.no_show_today} testid="stat-noshow" />
         </div>
 
@@ -610,56 +534,6 @@ export default function Dashboard() {
               </DialogContent>
             </Dialog>
 
-            <Dialog
-              open={paymentOpen}
-              onOpenChange={(open) => {
-                setPaymentOpen(open);
-                if (!open) {
-                  setPaymentTarget(null);
-                  setPaymentSubmitting(false);
-                }
-              }}
-            >
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle className="font-serif-display text-2xl">Payment method</DialogTitle>
-                  <DialogDescription>
-                    Choose how this payment was received before marking the ticket paid.
-                  </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={submitPaymentMethod} className="space-y-4" data-testid="payment-method-form">
-                  <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
-                    Token <span className="font-medium text-stone-900">#{String(paymentTarget?.token_number || "").padStart(3, "0")}</span>
-                    {" · "}
-                    <span className="font-medium text-stone-900">{paymentTarget?.customer_name}</span>
-                  </div>
-                  <div>
-                    <Label>Paid by</Label>
-                    <p className="mt-1 text-xs text-stone-500">
-                      Choose how this payment came in.
-                    </p>
-                    <div className="mt-2">
-                      <PaymentMethodCards
-                        value={paymentMethodChoice}
-                        onChange={setPaymentMethodChoice}
-                        testidPrefix="payment-method-select"
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      type="submit"
-                      disabled={paymentSubmitting || !paymentMethodChoice}
-                      className="rounded-full bg-success hover:bg-success/90 text-white h-11 px-6"
-                      data-testid="payment-method-submit"
-                    >
-                      {paymentSubmitting ? "Saving…" : "Confirm payment"}
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -738,141 +612,6 @@ export default function Dashboard() {
                 ))}
               </TableBody>
             </Table>
-
-            {recent.length > 0 && (
-              <div className="mt-8 border-t border-stone-200 pt-6" data-testid="recent-completed">
-                <div className="rounded-2xl border border-stone-200 bg-card p-5 sm:p-6">
-                  <div className="flex flex-wrap items-end justify-between gap-3">
-                    <div>
-                      <h3 className="font-serif-display text-xl">Today&apos;s completions</h3>
-                      <p className="mt-1 text-sm text-stone-500">Recent checkouts, payment status, and services provided.</p>
-                    </div>
-                    <div className="rounded-full border border-stone-200 bg-white px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-stone-500">
-                      Page {recentMeta.page} of {recentMeta.total_pages}
-                    </div>
-                  </div>
-
-                  <div className="mt-4 space-y-3">
-                    {recent.map((t) => (
-                      <div
-                        key={t.id}
-                        className="rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-[0_1px_0_rgba(28,25,23,0.03)]"
-                        data-testid={`recent-row-${t.token_number}`}
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-4">
-                          <div className="min-w-0 flex items-start gap-3">
-                            <div className="rounded-xl bg-secondary px-3 py-2 text-center">
-                              <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">Token</div>
-                              <div className="font-serif-display text-xl leading-none text-primary">
-                                #{String(t.token_number).padStart(3, "0")}
-                              </div>
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-medium text-stone-900">{t.customer_name}</p>
-                              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-stone-500">
-                                <span className="rounded-full bg-stone-100 px-2.5 py-1">
-                                  {t.service_count > 1 ? `${t.service_count} services` : t.service_name || "No service logged"}
-                                </span>
-                                {t.service_price > 0 && (
-                                  <span className="rounded-full bg-secondary px-2.5 py-1 text-primary">
-                                    ₹{Number(t.service_price).toLocaleString("en-IN")}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            {t.service_price > 0 ? (
-                              t.paid ? (
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  className="rounded-full bg-success hover:bg-success/90 text-white"
-                                  onClick={() => togglePaid(t.id, false)}
-                                  data-testid={`recent-paid-toggle-${t.token_number}`}
-                                >
-                                  <BadgeCheck className="h-3.5 w-3.5 mr-1" />
-                                  Paid{paymentMethodLabel(t.payment_method) ? ` · ${paymentMethodLabel(t.payment_method)}` : ""}
-                                </Button>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="rounded-full border-primary/40 text-primary hover:bg-secondary"
-                                  onClick={() => openPaymentDialog(t)}
-                                  data-testid={`recent-paid-toggle-${t.token_number}`}
-                                >
-                                  Mark paid
-                                </Button>
-                              )
-                            ) : (
-                              <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-400">
-                                Price not set
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {serviceListForTicket(t).length > 0 && (
-                          <Accordion type="single" collapsible className="mt-3">
-                            <AccordionItem value={`recent-${t.id}`} className="border-b-0">
-                              <AccordionTrigger className="rounded-xl bg-stone-50 px-3 py-2 text-xs font-medium text-stone-600 hover:no-underline">
-                                View services provided
-                              </AccordionTrigger>
-                              <AccordionContent className="px-1 pb-1 pt-3">
-                                <div className="flex flex-wrap gap-2">
-                                  {serviceListForTicket(t).map((serviceName, index) => (
-                                    <span
-                                      key={`${t.id}-service-${index}`}
-                                      className="rounded-full border border-stone-200 bg-card px-2.5 py-1 text-xs text-stone-700"
-                                    >
-                                      {serviceName}
-                                    </span>
-                                  ))}
-                                </div>
-                              </AccordionContent>
-                            </AccordionItem>
-                          </Accordion>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  {recentMeta.total > 0 && (
-                    <div className="mt-4 flex items-center justify-between gap-3 border-t border-stone-200 pt-4">
-                      <p className="text-xs text-stone-500">
-                        Showing {Math.min(((recentMeta.page - 1) * recentMeta.page_size) + 1, recentMeta.total)}
-                        {" - "}
-                        {Math.min(recentMeta.page * recentMeta.page_size, recentMeta.total)}
-                        {" of "}
-                        {recentMeta.total}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="rounded-full border-stone-300"
-                          onClick={() => goToRecentPage(recentMeta.page - 1)}
-                          disabled={recentMeta.page <= 1}
-                          data-testid="recent-prev-page"
-                        >
-                          Previous
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="rounded-full border-stone-300"
-                          onClick={() => goToRecentPage(recentMeta.page + 1)}
-                          disabled={recentMeta.page >= recentMeta.total_pages}
-                          data-testid="recent-next-page"
-                        >
-                          Next
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
 
           <aside className="space-y-4">
