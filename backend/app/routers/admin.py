@@ -37,7 +37,7 @@ async def update_theme(
 ):
     require_super_admin(user)
     if payload.theme_id not in VALID_THEME_IDS:
-        raise HTTPException(status_code=400, detail=f"Invalid theme_id.")
+        raise HTTPException(status_code=400, detail="Invalid theme_id.")
     await db.settings.update_one(
         {"key": "theme"},
         {"$set": {"key": "theme", "value": payload.theme_id}},

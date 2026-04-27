@@ -11,6 +11,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +26,19 @@ from app.routers import queue as queue_router
 from app.routers import services as services_router
 from app.startup import ensure_indexes, load_runtime_settings, seed_demo_data
 
-app = FastAPI(title="Go-Next Salon Queue API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await ensure_indexes()
+    await seed_demo_data()
+    await load_runtime_settings()
+    yield
+    # Shutdown
+    client.close()
+
+
+app = FastAPI(title="Go-Next Salon Queue API", lifespan=lifespan)
 
 api = APIRouter(prefix="/api")
 api.include_router(auth_router.router)
@@ -38,26 +51,18 @@ api.include_router(plans_router.router)
 api.include_router(admin_router.router)
 
 
-@app.on_event("startup")
-async def on_start():
-    await ensure_indexes()
-    await seed_demo_data()
-    await load_runtime_settings()
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    client.close()
-
-
 app.include_router(api)
+
+# Configure CORS from environment variable
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+if cors_origins == "*":
+    origins_list = ["*"]
+else:
+    origins_list = [origin.strip() for origin in cors_origins.split(",")]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
-    ],
+    allow_origins=origins_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],

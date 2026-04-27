@@ -64,7 +64,7 @@ async def register(body: RegisterRequest, response: Response):
     }
     await db.users.insert_one(user_doc)
 
-    business = await create_business_doc(user_doc, CreateBusinessRequest(
+    await create_business_doc(user_doc, CreateBusinessRequest(
         business_name=body.business_name,
         business_type=body.business_type,
         address=body.address,
