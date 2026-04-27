@@ -272,12 +272,15 @@ export default function Dashboard() {
     if (!ticketToComplete) return;
     setCompleting(true);
     try {
-      await api.post(`/business/${business.id}/queue/${ticketToComplete.id}/complete`, {
+      const finalAmount = Number(completion.final_amount) || 0;
+      const payload = {
         service_ids: completion.service_ids,
-        final_amount: Number(completion.final_amount) || 0,
-        paid: !!completion.payment_method,
-        payment_method: completion.payment_method,
-      });
+        final_amount: finalAmount,
+        paid: finalAmount > 0 ? !!completion.payment_method : false,
+        payment_method: finalAmount > 0 && completion.payment_method ? completion.payment_method : null,
+      };
+      
+      await api.post(`/business/${business.id}/queue/${ticketToComplete.id}/complete`, payload);
       toast.success("Ticket completed");
       setCompleteOpen(false);
       setTicketToComplete(null);
@@ -377,12 +380,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <StatCard label="Waiting" value={stats.waiting} accent="text-primary" testid="stat-waiting" />
           <StatCard label="Serving" value={stats.serving} accent="text-success" testid="stat-serving" />
-          <StatCard label="Done today" value={stats.completed_today} testid="stat-done" />
           <StatCard label="No-shows today" value={stats.no_show_today} testid="stat-noshow" />
-
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -564,21 +565,23 @@ export default function Dashboard() {
                         Suggested total: ₹{Number(suggestedTotal || 0).toLocaleString("en-IN")}
                       </p>
                     </div>
-                    <div className="space-y-3">
-                      <div>
-                        <Label>Paid by</Label>
-                        <p className="mt-1 text-xs text-stone-500">
-                          Optional. Choose a method now to complete this ticket as paid.
-                        </p>
-                        <div className="mt-2">
-                          <PaymentMethodCards
-                            value={completion.payment_method}
-                            onChange={(value) => setCompletion((prev) => ({ ...prev, payment_method: value }))}
-                            testidPrefix="complete-ticket-payment-method"
-                          />
+                    {Number(completion.final_amount) > 0 && (
+                      <div className="space-y-3">
+                        <div>
+                          <Label>Paid by</Label>
+                          <p className="mt-1 text-xs text-stone-500">
+                            Optional. Choose a method now to complete this ticket as paid.
+                          </p>
+                          <div className="mt-2">
+                            <PaymentMethodCards
+                              value={completion.payment_method}
+                              onChange={(value) => setCompletion((prev) => ({ ...prev, payment_method: value }))}
+                              testidPrefix="complete-ticket-payment-method"
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
                   <DialogFooter>
@@ -588,15 +591,19 @@ export default function Dashboard() {
                       className="rounded-full bg-success hover:bg-success/90 text-white h-11 px-6"
                       data-testid="complete-ticket-submit"
                     >
-                                        {(() => {
-                    if (completing) {
-                      return "Finishing checkout…";
-                    }
-                    if (completion.payment_method) {
-                      return "Complete & mark paid";
-                    }
-                    return "Complete Service"; // Changed from "Complete without payment"
-                  })()}
+                      {(() => {
+                        if (completing) {
+                          return "Finishing checkout…";
+                        }
+                        const amount = Number(completion.final_amount) || 0;
+                        if (amount === 0) {
+                          return "Complete (Unpaid)";
+                        }
+                        if (completion.payment_method) {
+                          return "Complete & mark paid";
+                        }
+                        return "Complete (Unpaid)";
+                      })()}
                     </Button>
                   </DialogFooter>
                 </form>

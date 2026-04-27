@@ -91,7 +91,7 @@ class CompleteTicketRequest(BaseModel):
     service_ids: list[str] = Field(default_factory=list)
     final_amount: float = Field(ge=0, le=1_000_000)
     paid: bool = True
-    payment_method: PaymentMethodT
+    payment_method: Optional[PaymentMethodT] = None
 
 
 # ---- Services (premium+) ----

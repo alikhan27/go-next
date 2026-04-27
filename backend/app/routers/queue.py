@@ -192,13 +192,18 @@ async def complete_ticket(
         service_ids=body.service_ids,
     )
     now_iso = datetime.now(timezone.utc).isoformat()
+    
+    # If amount is 0, mark as unpaid regardless of payment_method
+    final_amount = float(body.final_amount or 0)
+    is_paid = bool(body.paid) and final_amount > 0
+    
     updates = {
         "status": "completed",
         "finished_at": now_iso,
-        "paid": bool(body.paid),
-        "payment_method": body.payment_method if body.paid else None,
-        "paid_at": now_iso if body.paid else None,
-        "service_price": float(body.final_amount or 0),
+        "paid": is_paid,
+        "payment_method": body.payment_method if is_paid else None,
+        "paid_at": now_iso if is_paid else None,
+        "service_price": final_amount,
     }
     updates.update(ticket_service_fields(services))
     await db.queue.update_one({"id": ticket_id}, {"$set": updates})
