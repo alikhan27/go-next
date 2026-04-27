@@ -396,27 +396,33 @@ export default function Collections() {
                     </TableCell>
                     <TableCell className="pr-5 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {row.paid ? (
-                          <Button
-                            size="sm"
-                            variant="default"
-                            className="rounded-full bg-success hover:bg-success/90 text-white"
-                            onClick={() => markAsUnpaid(row.id)}
-                            data-testid={`payment-status-${row.token_number}`}
-                          >
-                            <BadgeCheck className="h-3.5 w-3.5 mr-1" />
-                            Paid
-                          </Button>
+                        {row.service_price > 0 ? (
+                          row.paid ? (
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="rounded-full bg-success hover:bg-success/90 text-white"
+                              onClick={() => markAsUnpaid(row.id)}
+                              data-testid={`payment-status-${row.token_number}`}
+                            >
+                              <BadgeCheck className="h-3.5 w-3.5 mr-1" />
+                              Paid
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="rounded-full border-primary/40 text-primary hover:bg-secondary"
+                              onClick={() => openPaymentDialog(row)}
+                              data-testid={`mark-paid-${row.token_number}`}
+                            >
+                              Mark as paid
+                            </Button>
+                          )
                         ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="rounded-full border-primary/40 text-primary hover:bg-secondary"
-                            onClick={() => openPaymentDialog(row)}
-                            data-testid={`mark-paid-${row.token_number}`}
-                          >
-                            Mark as paid
-                          </Button>
+                          <Badge className="rounded-full border border-stone-200 bg-stone-50 text-stone-400 text-xs px-3 py-1">
+                            No amount
+                          </Badge>
                         )}
                       </div>
                     </TableCell>
