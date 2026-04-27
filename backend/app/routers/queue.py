@@ -173,6 +173,27 @@ async def mark_paid(
     return public_ticket(updated)
 
 
+@router.patch("/queue/{ticket_id}/amount")
+async def update_amount(
+    business_id: str,
+    ticket_id: str,
+    body: dict,
+    user: dict = Depends(get_current_user),
+):
+    business = await owned_business_or_404(user["id"], business_id)
+    t = await db.queue.find_one({"id": ticket_id, "business_id": business["id"]}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    service_price = float(body.get("service_price", 0))
+    if service_price < 0:
+        raise HTTPException(status_code=400, detail="Amount cannot be negative")
+    
+    await db.queue.update_one({"id": ticket_id}, {"$set": {"service_price": service_price}})
+    updated = await db.queue.find_one({"id": ticket_id}, {"_id": 0})
+    return public_ticket(updated)
+
+
 @router.post("/queue/{ticket_id}/complete")
 async def complete_ticket(
     business_id: str,

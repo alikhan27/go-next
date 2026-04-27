@@ -1,15 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Navigate } from "react-router-dom";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
-import { api } from "../lib/api";
+import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { usePlans } from "../context/PlanContext";
 import DashboardHeader from "../components/DashboardHeader";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from "../components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
 import { Badge } from "../components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { toast } from "sonner";
+import { BadgeCheck, Edit2 } from "lucide-react";
 
 function StatCard({ label, value, hint, accent, testid }) {
   return (
@@ -25,6 +33,37 @@ function statusBadge(paid) {
   return paid
     ? "bg-success/15 text-success border-success/40"
     : "bg-primary/20 text-primary border-primary/50";
+}
+
+function PaymentMethodCards({ value, onChange, testidPrefix = "payment-method" }) {
+  const options = [
+    { id: "cash", label: "Cash", hint: "Collected at the counter" },
+    { id: "online", label: "Online", hint: "UPI, card, or transfer" },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {options.map((option) => {
+        const active = value === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onChange(option.id)}
+            className={`rounded-xl border px-4 py-3 text-left transition-colors ${
+              active
+                ? "border-primary bg-secondary"
+                : "border-stone-200 bg-white hover:border-stone-300"
+            }`}
+            data-testid={`${testidPrefix}-${option.id}`}
+          >
+            <span className="block text-sm font-medium text-stone-900">{option.label}</span>
+            <span className="mt-1 block text-xs text-stone-500">{option.hint}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function Collections() {
@@ -46,6 +85,14 @@ export default function Collections() {
   const [data, setData] = useState(null);
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [editingTicket, setEditingTicket] = useState(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [amountDialogOpen, setAmountDialogOpen] = useState(false);
+  const [updatingAmount, setUpdatingAmount] = useState(false);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentTicket, setPaymentTicket] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [updatingPayment, setUpdatingPayment] = useState(false);
 
   useEffect(() => {
     if (!paidPlan && days !== 7) {
@@ -71,6 +118,70 @@ export default function Collections() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const openAmountDialog = (ticket) => {
+    setEditingTicket(ticket);
+    setEditAmount(String(ticket.service_price || 0));
+    setAmountDialogOpen(true);
+  };
+
+  const updateAmount = async (e) => {
+    e.preventDefault();
+    if (!editingTicket) return;
+    setUpdatingAmount(true);
+    try {
+      await api.patch(`/business/${business.id}/queue/${editingTicket.id}/amount`, {
+        service_price: Number(editAmount) || 0,
+      });
+      toast.success("Amount updated");
+      setAmountDialogOpen(false);
+      setEditingTicket(null);
+      load();
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    } finally {
+      setUpdatingAmount(false);
+    }
+  };
+
+  const openPaymentDialog = (ticket) => {
+    setPaymentTicket(ticket);
+    setPaymentMethod(ticket.payment_method || "");
+    setPaymentDialogOpen(true);
+  };
+
+  const markAsPaid = async (e) => {
+    e.preventDefault();
+    if (!paymentTicket || !paymentMethod) return;
+    setUpdatingPayment(true);
+    try {
+      await api.patch(`/business/${business.id}/queue/${paymentTicket.id}/paid`, {
+        paid: true,
+        payment_method: paymentMethod,
+      });
+      toast.success(`Marked as paid via ${paymentMethod}`);
+      setPaymentDialogOpen(false);
+      setPaymentTicket(null);
+      load();
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    } finally {
+      setUpdatingPayment(false);
+    }
+  };
+
+  const markAsUnpaid = async (ticketId) => {
+    try {
+      await api.patch(`/business/${business.id}/queue/${ticketId}/paid`, {
+        paid: false,
+        payment_method: null,
+      });
+      toast.success("Marked as unpaid");
+      load();
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    }
+  };
 
   if (auth === null) return null;
   if (!business) {
@@ -231,7 +342,7 @@ export default function Collections() {
                 <TableHead>Services</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Method</TableHead>
-                <TableHead className="pr-5 text-right">Payment</TableHead>
+                <TableHead className="pr-5 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -260,8 +371,21 @@ export default function Collections() {
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm font-medium text-stone-900">
-                      ₹{Number(row.service_price || 0).toLocaleString("en-IN")}
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-stone-900">
+                          ₹{Number(row.service_price || 0).toLocaleString("en-IN")}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 hover:bg-stone-100"
+                          onClick={() => openAmountDialog(row)}
+                          data-testid={`edit-amount-${row.token_number}`}
+                        >
+                          <Edit2 className="h-3.5 w-3.5 text-stone-500" />
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm text-stone-600">
                       {row.payment_method === "online"
@@ -271,9 +395,30 @@ export default function Collections() {
                           : "—"}
                     </TableCell>
                     <TableCell className="pr-5 text-right">
-                      <Badge className={`rounded-full border font-normal ${statusBadge(row.paid)}`}>
-                        {row.paid ? "Paid" : "Pending"}
-                      </Badge>
+                      <div className="flex items-center justify-end gap-2">
+                        {row.paid ? (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="rounded-full bg-success hover:bg-success/90 text-white"
+                            onClick={() => markAsUnpaid(row.id)}
+                            data-testid={`payment-status-${row.token_number}`}
+                          >
+                            <BadgeCheck className="h-3.5 w-3.5 mr-1" />
+                            Paid
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-full border-primary/40 text-primary hover:bg-secondary"
+                            onClick={() => openPaymentDialog(row)}
+                            data-testid={`mark-paid-${row.token_number}`}
+                          >
+                            Mark as paid
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -281,6 +426,92 @@ export default function Collections() {
             </TableBody>
           </Table>
         </div>
+
+        {/* Amount Edit Dialog */}
+        <Dialog open={amountDialogOpen} onOpenChange={setAmountDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="font-serif-display text-2xl">Update amount</DialogTitle>
+              <DialogDescription>
+                Change the service amount for this completed ticket.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={updateAmount} className="space-y-4">
+              <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+                Token <span className="font-medium text-stone-900">#{String(editingTicket?.token_number || "").padStart(3, "0")}</span>
+                {" · "}
+                <span className="font-medium text-stone-900">{editingTicket?.customer_name}</span>
+              </div>
+              <div>
+                <Label>New amount (₹)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  className="mt-1.5 h-11"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  required
+                  data-testid="edit-amount-input"
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  type="submit"
+                  disabled={updatingAmount}
+                  className="rounded-full bg-primary hover:bg-primary/90 text-white h-11 px-6"
+                  data-testid="update-amount-submit"
+                >
+                  {updatingAmount ? "Updating…" : "Update amount"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Payment Method Dialog */}
+        <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="font-serif-display text-2xl">Mark as paid</DialogTitle>
+              <DialogDescription>
+                Choose how this payment was received.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={markAsPaid} className="space-y-4">
+              <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+                Token <span className="font-medium text-stone-900">#{String(paymentTicket?.token_number || "").padStart(3, "0")}</span>
+                {" · "}
+                <span className="font-medium text-stone-900">{paymentTicket?.customer_name}</span>
+                {" · "}
+                <span className="font-medium text-stone-900">₹{Number(paymentTicket?.service_price || 0).toLocaleString("en-IN")}</span>
+              </div>
+              <div>
+                <Label>Payment method</Label>
+                <p className="mt-1 text-xs text-stone-500">
+                  Choose how this payment came in.
+                </p>
+                <div className="mt-2">
+                  <PaymentMethodCards
+                    value={paymentMethod}
+                    onChange={setPaymentMethod}
+                    testidPrefix="collections-payment-method"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="submit"
+                  disabled={updatingPayment || !paymentMethod}
+                  className="rounded-full bg-success hover:bg-success/90 text-white h-11 px-6"
+                  data-testid="mark-paid-submit"
+                >
+                  {updatingPayment ? "Saving…" : "Confirm payment"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );
