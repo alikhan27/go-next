@@ -265,6 +265,22 @@ export default function AdminPanel() {
     [pendingUsersTable, rejectedUsersTable, loadData],
   );
 
+  const deleteOutlet = useCallback(
+    async (businessId) => {
+      try {
+        await api.delete(`/admin/businesses/${businessId}`);
+        toast.success("Outlet deleted!");
+        outletsTable.refresh();
+        loadData(); // Refresh stats, lockouts etc.
+      } catch (err) {
+        toast.error(
+          formatApiErrorDetail(err.response?.data?.detail) || err.message,
+        );
+      }
+    },
+    [outletsTable, loadData],
+  );
+
   useEffect(() => {
     loadData();
   }, [loadData]);

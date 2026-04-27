@@ -63,10 +63,7 @@ export default function Login() {
             className="inline-flex items-center gap-2"
             data-testid="login-brand"
           >
-            <BrandLogo compact color={appAccentColor} />
-            <span className="text-sm font-semibold text-foreground">
-              Go-Next
-            </span>
+            <BrandLogo color={appAccentColor} />
           </Link>
 
           <h1 className="font-serif-display mt-8 text-4xl leading-tight">
@@ -135,7 +132,7 @@ export default function Login() {
             </Link>
           </p>
           <p className="mt-2 text-xs text-stone-500">
-            Demo owner: admin@go-next.in · admin123
+            Demo owner: demo@go-next.in · Demo@123
           </p>
         </div>
       </div>

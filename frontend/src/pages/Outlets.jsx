@@ -17,6 +17,8 @@ import {
 } from "../components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Plus, MapPin, Building2, ArrowRight, Trash2 } from "lucide-react";
+import { INDIA_STATES } from "../lib/constants"; // Import INDIA_STATES
+
 export default function Outlets() {
   const { auth, addBusiness, removeBusiness } = useAuth();
   const { isPaidPlan, planLimits, planLabel } = usePlans();
@@ -132,8 +134,18 @@ export default function Outlets() {
                   </div>
                   <div>
                     <Label>State <span className="text-primary">*</span></Label>
-                    <Input required className="mt-1.5 h-11" value={form.state}
-                      onChange={(e) => set("state")(e.target.value)} data-testid="new-outlet-state" />
+                    <Select required value={form.state} onValueChange={set("state")}>
+                      <SelectTrigger className="mt-1.5 h-11" data-testid="new-outlet-state">
+                        <SelectValue placeholder="Select state" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-64">
+                        {INDIA_STATES.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div>
@@ -235,3 +247,4 @@ export default function Outlets() {
     </div>
   );
 }
+

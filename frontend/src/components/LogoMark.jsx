@@ -31,13 +31,13 @@ export function LogoMark({ className = "", title = "Go-Next", color }) {
 
 export default function BrandLogo({ compact = false, className = "", color }) {
   return (
-    <span className={`inline-flex items-center gap-2 ${className}`}>
+    <span className={`inline-flex items-center ${className}`}>
       <span className="flex h-12 w-12 items-center justify-center bg-primary/12 text-primary ring-primary/20">
         <LogoMark color={color} />
       </span>
       {!compact && (
         <span className="leading-tight">
-          <span className="block text-sm font-semibold tracking-tight text-foreground">
+          <span className="block text-lg font-semibold tracking-tight text-foreground">
             Go-Next
           </span>
         </span>

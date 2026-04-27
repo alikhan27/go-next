@@ -1,9 +1,11 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import { api } from "../lib/api";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
+  const location = useLocation();
   // null = checking, false = logged-out, object = authenticated
   const [auth, setAuth] = useState(null);
 
@@ -17,8 +19,15 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    // Only refresh authentication status if not on the home page ('/')
+    if (location.pathname !== "/") {
+      refresh();
+    } else {
+      // If on the home page, assume not authenticated for initial render
+      // This prevents the 401 Unauthorized error on the homepage
+      setAuth(false);
+    }
+  }, [refresh, location.pathname]);
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
