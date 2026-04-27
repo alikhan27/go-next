@@ -215,12 +215,29 @@ export default function Dashboard() {
   };
 
   const toggleCompletionService = (serviceId) => {
-    setCompletion((prev) => ({
-      ...prev,
-      service_ids: prev.service_ids.includes(serviceId)
+    setCompletion((prev) => {
+      const newServiceIds = prev.service_ids.includes(serviceId)
         ? prev.service_ids.filter((id) => id !== serviceId)
-        : [...prev.service_ids, serviceId],
-    }));
+        : [...prev.service_ids, serviceId];
+      
+      // If user hasn't manually edited the amount, update it based on selected services
+      if (!prev.amountDirty) {
+        const newTotal = services
+          .filter((svc) => newServiceIds.includes(svc.id))
+          .reduce((sum, svc) => sum + Number(svc.price || 0), 0);
+        return {
+          ...prev,
+          service_ids: newServiceIds,
+          final_amount: String(newTotal || 0),
+        };
+      }
+      
+      // User has manually edited amount, preserve it
+      return {
+        ...prev,
+        service_ids: newServiceIds,
+      };
+    });
   };
 
   const submitCompletion = async (e) => {
@@ -416,6 +433,7 @@ export default function Dashboard() {
                 if (!open) {
                   setTicketToComplete(null);
                   setCompleting(false);
+                  setCompletion({ service_ids: [], final_amount: "0", payment_method: "", amountDirty: false });
                 }
               }}
             >
