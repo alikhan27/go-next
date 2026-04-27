@@ -170,18 +170,6 @@ export default function Collections() {
     }
   };
 
-  const markAsUnpaid = async (ticketId) => {
-    try {
-      await api.patch(`/business/${business.id}/queue/${ticketId}/paid`, {
-        paid: false,
-        payment_method: null,
-      });
-      load();
-    } catch (err) {
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
-    }
-  };
-
   if (auth === null) return null;
   if (!business) {
     if (businesses.length === 0) return <Navigate to="/dashboard/outlets" replace />;
@@ -400,16 +388,10 @@ export default function Collections() {
                       <div className="flex items-center justify-end gap-2">
                         {row.service_price > 0 ? (
                           row.paid ? (
-                            <Button
-                              size="sm"
-                              variant="default"
-                              className="rounded-full bg-success hover:bg-success/90 text-white"
-                              onClick={() => markAsUnpaid(row.id)}
-                              data-testid={`payment-status-${row.token_number}`}
-                            >
-                              <BadgeCheck className="h-3.5 w-3.5 mr-1" />
+                            <Badge className="rounded-full bg-success text-white px-3 py-1.5 font-normal">
+                              <BadgeCheck className="h-3.5 w-3.5 mr-1 inline" />
                               Paid
-                            </Button>
+                            </Badge>
                           ) : (
                             <Button
                               size="sm"
