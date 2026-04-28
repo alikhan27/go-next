@@ -7,9 +7,11 @@ from ..config import LOCKOUT_THRESHOLD, LOCKOUT_WINDOW_MINUTES
 from ..db import db
 from ..models import AdminPlanUpdate, AdminUserUpdate
 from ..security import get_current_user, require_super_admin
+from ..redis_client import invalidate_user_cache, delete_all_user_sessions
 from ..services import (
     apply_plan_catalog,
     clear_attempts,
+    invalidate_user_businesses,
     paid_plan_expires_at,
     public_business,
     public_plan,
@@ -186,6 +188,10 @@ async def admin_update_user(
         await clear_attempts(f"email:{target['email']}")
     if updates:
         await db.users.update_one({"id": user_id}, {"$set": updates})
+        await invalidate_user_cache(user_id)
+        # If account just got locked, force sign-out everywhere.
+        if updates.get("is_locked") is True:
+            await delete_all_user_sessions(user_id)
     updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
     updated.pop("password_hash", None)
     return updated
@@ -205,6 +211,7 @@ async def admin_approve_user(
         {"id": user_id},
         {"$set": {"is_approved": True, "approved_at": datetime.now(timezone.utc).isoformat()}},
     )
+    await invalidate_user_cache(user_id)
     return {"ok": True, "message": f"User {target['email']} has been approved"}
 
 
@@ -222,6 +229,8 @@ async def admin_reject_user(
         {"id": user_id},
         {"$set": {"is_approved": False, "rejected_at": datetime.now(timezone.utc).isoformat()}},
     )
+    await invalidate_user_cache(user_id)
+    await delete_all_user_sessions(user_id)
     return {"ok": True, "message": f"User {target['email']} has been rejected"}
 
 
@@ -369,11 +378,14 @@ async def admin_businesses(
 @router.delete("/businesses/{business_id}")
 async def admin_delete_business(business_id: str, user: dict = Depends(get_current_user)):
     require_super_admin(user)
+    target = await db.businesses.find_one({"id": business_id}, {"_id": 0, "owner_user_id": 1})
     res = await db.businesses.delete_one({"id": business_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Outlet not found")
     await db.queue.delete_many({"business_id": business_id})
     await db.services.delete_many({"business_id": business_id})
+    if target and target.get("owner_user_id"):
+        await invalidate_user_businesses(target["owner_user_id"])
     return {"ok": True}
 
 

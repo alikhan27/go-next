@@ -66,6 +66,9 @@ async def sync_user_plan(user: dict) -> dict:
     else:
         updates["plan_expires_at"] = paid_plan_expires_at(now).isoformat()
     await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    # Drop cached user dict so the next request sees the new plan.
+    from .redis_client import invalidate_user_cache
+    await invalidate_user_cache(user["id"])
     return {**user, **updates}
 
 
@@ -477,12 +480,28 @@ async def owned_business_or_404(user_id: str, business_id: str) -> dict:
 
 
 async def list_user_businesses(user_id: str) -> list:
+    """Return outlets owned by this user. Cached for 30 minutes in Redis;
+    invalidate via `invalidate_user_businesses(user_id)` when outlets change.
+    """
+    from .redis_client import cache_get, cache_set
+    cache_key = f"businesses:{user_id}"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
     docs = (
         await db.businesses.find({"owner_user_id": user_id}, {"_id": 0})
         .sort("created_at", 1)
         .to_list(1000)
     )
-    return [public_business(b) for b in docs]
+    payload = [public_business(b) for b in docs]
+    await cache_set(cache_key, payload, ttl=1800)
+    return payload
+
+
+async def invalidate_user_businesses(user_id: str) -> None:
+    """Drop the cached business list for a user (call on outlet add/delete/edit)."""
+    from .redis_client import cache_delete
+    await cache_delete(f"businesses:{user_id}")
 
 
 async def create_business_doc(user: dict, body: CreateBusinessRequest) -> dict:

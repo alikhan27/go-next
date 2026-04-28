@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from ..db import db
 from ..models import PlanChangeRequest
 from ..security import get_current_user
+from ..redis_client import invalidate_user_cache
 from ..services import parse_dt, paid_plan_expires_at, public_plan, public_user, sync_user_plan, user_plan
 
 router = APIRouter()
@@ -52,6 +53,7 @@ async def change_subscription(body: PlanChangeRequest, user: dict = Depends(get_
                 "pending_plan_requested_at": now.isoformat(),
             }},
         )
+        await invalidate_user_cache(user["id"])
         updated = {**user, "pending_plan": requested, "pending_plan_requested_at": now.isoformat()}
         return {
             "user": public_user(updated),
@@ -70,6 +72,7 @@ async def change_subscription(body: PlanChangeRequest, user: dict = Depends(get_
     else:
         updates["plan_expires_at"] = paid_plan_expires_at(now).isoformat()
     await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    await invalidate_user_cache(user["id"])
     updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
     updated = await sync_user_plan(updated)
     return {

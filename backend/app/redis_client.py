@@ -1,9 +1,14 @@
 """Redis client for caching, sessions, and rate limiting.
 
-Single global Redis connection used across the application for:
-- Session management (user sessions)
-- Caching (user data, businesses, services)
-- Rate limiting (login attempts, API throttling)
+Architecture:
+- Single async Redis connection pool used across the application.
+- Token-keyed sessions (`session:{token}` → user_id) so multiple devices
+  per user are supported and logout only invalidates the current device.
+- A reverse index (`user_sessions:{user_id}` Redis SET) tracks all active
+  tokens per user, enabling logout-from-all-devices and bulk invalidation
+  on user-data changes.
+- Per-user cache (`user:{user_id}` → user dict) avoids the Mongo round-trip
+  on every authenticated request.
 """
 import os
 import json
@@ -13,10 +18,24 @@ from bson import ObjectId
 import redis.asyncio as redis
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "100"))
+
+# Bounded async connection pool — caps Redis sockets even under burst load.
+_pool = redis.ConnectionPool.from_url(
+    REDIS_URL,
+    encoding="utf-8",
+    decode_responses=True,
+    max_connections=REDIS_MAX_CONNECTIONS,
+    socket_connect_timeout=5,
+    socket_timeout=5,
+    health_check_interval=30,
+)
+redis_client = redis.Redis(connection_pool=_pool)
 
 
+# ---------- JSON helpers ----------
 def _json_default(obj):
-    """JSON serializer for objects not serializable by default (ObjectId, datetime)."""
+    """JSON serializer for ObjectId / datetime so cached Mongo docs survive."""
     if isinstance(obj, ObjectId):
         return str(obj)
     if isinstance(obj, datetime):
@@ -27,67 +46,93 @@ def _json_default(obj):
 def _dumps(value: Any) -> str:
     return json.dumps(value, default=_json_default)
 
-# Create global async Redis client
-redis_client = redis.from_url(
-    REDIS_URL,
-    encoding="utf-8",
-    decode_responses=True,
-    socket_connect_timeout=5,
-    socket_timeout=5,
-    retry_on_timeout=True,
-    health_check_interval=30,
-)
+
+# ---------- Session Management (token-keyed, multi-device) ----------
+SESSION_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 
 
-# Session Management
-async def set_session(session_id: str, user_data: dict, ttl: int = 604800):
-    """Store user session in Redis (7 days default TTL)."""
-    await redis_client.setex(
-        f"session:{session_id}",
-        ttl,
-        _dumps(user_data)
-    )
+async def set_session(token: str, user_id: str, ttl: int = SESSION_TTL_SECONDS) -> None:
+    """Bind a token to a user_id. Each call creates an independent session,
+    so the same user can be logged in on multiple devices simultaneously.
+    """
+    pipe = redis_client.pipeline()
+    pipe.setex(f"session:{token}", ttl, user_id)
+    pipe.sadd(f"user_sessions:{user_id}", token)
+    # Keep the reverse-index alive at least as long as the longest session.
+    pipe.expire(f"user_sessions:{user_id}", ttl)
+    await pipe.execute()
 
 
-async def get_session(session_id: str) -> Optional[dict]:
-    """Retrieve user session from Redis."""
-    data = await redis_client.get(f"session:{session_id}")
-    if data:
-        return json.loads(data)
-    return None
+async def get_session(token: str) -> Optional[str]:
+    """Return the user_id bound to a token, or None if the session expired."""
+    return await redis_client.get(f"session:{token}")
 
 
-async def delete_session(session_id: str):
-    """Delete user session from Redis."""
-    await redis_client.delete(f"session:{session_id}")
+async def refresh_session(token: str, ttl: int = SESSION_TTL_SECONDS) -> None:
+    """Sliding-window TTL refresh on access."""
+    user_id = await redis_client.get(f"session:{token}")
+    if user_id:
+        pipe = redis_client.pipeline()
+        pipe.expire(f"session:{token}", ttl)
+        pipe.expire(f"user_sessions:{user_id}", ttl)
+        await pipe.execute()
 
 
-async def refresh_session(session_id: str, ttl: int = 604800):
-    """Extend session TTL."""
-    await redis_client.expire(f"session:{session_id}", ttl)
+async def delete_session(token: str) -> None:
+    """Revoke a single device session (the one logging out)."""
+    user_id = await redis_client.get(f"session:{token}")
+    pipe = redis_client.pipeline()
+    pipe.delete(f"session:{token}")
+    if user_id:
+        pipe.srem(f"user_sessions:{user_id}", token)
+    await pipe.execute()
 
 
-# Caching
-async def cache_set(key: str, value: Any, ttl: int = 1800):
-    """Cache any data with TTL (30 minutes default)."""
+async def delete_all_user_sessions(user_id: str) -> int:
+    """Force sign-out from every device. Returns count of revoked tokens."""
+    tokens = await redis_client.smembers(f"user_sessions:{user_id}")
+    if not tokens:
+        return 0
+    pipe = redis_client.pipeline()
+    for token in tokens:
+        pipe.delete(f"session:{token}")
+    pipe.delete(f"user_sessions:{user_id}")
+    await pipe.execute()
+    return len(tokens)
+
+
+# ---------- Per-user cache (avoids Mongo on every request) ----------
+USER_CACHE_TTL = 30 * 60  # 30 minutes
+
+
+async def cache_user(user_id: str, user: dict, ttl: int = USER_CACHE_TTL) -> None:
+    await redis_client.setex(f"user:{user_id}", ttl, _dumps(user))
+
+
+async def get_cached_user(user_id: str) -> Optional[dict]:
+    raw = await redis_client.get(f"user:{user_id}")
+    return json.loads(raw) if raw else None
+
+
+async def invalidate_user_cache(user_id: str) -> None:
+    await redis_client.delete(f"user:{user_id}")
+
+
+# ---------- Generic cache ----------
+async def cache_set(key: str, value: Any, ttl: int = 1800) -> None:
     await redis_client.setex(key, ttl, _dumps(value))
 
 
 async def cache_get(key: str) -> Optional[Any]:
-    """Get cached data."""
     data = await redis_client.get(key)
-    if data:
-        return json.loads(data)
-    return None
+    return json.loads(data) if data else None
 
 
-async def cache_delete(key: str):
-    """Delete cached data."""
+async def cache_delete(key: str) -> None:
     await redis_client.delete(key)
 
 
-async def cache_delete_pattern(pattern: str):
-    """Delete all keys matching pattern."""
+async def cache_delete_pattern(pattern: str) -> None:
     keys = []
     async for key in redis_client.scan_iter(match=pattern):
         keys.append(key)
@@ -95,9 +140,8 @@ async def cache_delete_pattern(pattern: str):
         await redis_client.delete(*keys)
 
 
-# Rate Limiting
+# ---------- Rate Limiting ----------
 async def increment_rate_limit(identifier: str, ttl: int = 3600) -> int:
-    """Increment rate limit counter and return current count."""
     key = f"rate_limit:{identifier}"
     count = await redis_client.incr(key)
     if count == 1:
@@ -106,51 +150,42 @@ async def increment_rate_limit(identifier: str, ttl: int = 3600) -> int:
 
 
 async def get_rate_limit(identifier: str) -> int:
-    """Get current rate limit count."""
     count = await redis_client.get(f"rate_limit:{identifier}")
     return int(count) if count else 0
 
 
-async def reset_rate_limit(identifier: str):
-    """Reset rate limit counter."""
+async def reset_rate_limit(identifier: str) -> None:
     await redis_client.delete(f"rate_limit:{identifier}")
 
 
-# Login Attempts (Rate Limiting)
+# ---------- Failed login tracking ----------
 async def record_failed_login(identifier: str) -> int:
-    """Record failed login attempt and return total count."""
     key = f"login_attempts:{identifier}"
     count = await redis_client.incr(key)
     if count == 1:
-        # Set 30 minute expiry on first failed attempt
         await redis_client.expire(key, 1800)
     return count
 
 
 async def get_failed_login_count(identifier: str) -> int:
-    """Get failed login attempt count."""
     count = await redis_client.get(f"login_attempts:{identifier}")
     return int(count) if count else 0
 
 
-async def clear_failed_logins(identifier: str):
-    """Clear failed login attempts."""
+async def clear_failed_logins(identifier: str) -> None:
     await redis_client.delete(f"login_attempts:{identifier}")
 
 
-async def set_account_lockout(identifier: str, ttl: int = 3600):
-    """Lock account for specified duration (1 hour default)."""
+async def set_account_lockout(identifier: str, ttl: int = 3600) -> None:
     await redis_client.setex(f"lockout:{identifier}", ttl, "1")
 
 
 async def is_account_locked(identifier: str) -> bool:
-    """Check if account is locked."""
     return bool(await redis_client.exists(f"lockout:{identifier}"))
 
 
-# Health Check
+# ---------- Health ----------
 async def redis_health_check() -> bool:
-    """Check if Redis is healthy."""
     try:
         await redis_client.ping()
         return True
@@ -158,7 +193,6 @@ async def redis_health_check() -> bool:
         return False
 
 
-# Cleanup on shutdown
-async def close_redis():
-    """Close Redis connection."""
+async def close_redis() -> None:
     await redis_client.close()
+    await _pool.disconnect()

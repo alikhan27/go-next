@@ -36,6 +36,9 @@ from ..services import (
 from ..redis_client import (
     set_session,
     delete_session,
+    delete_all_user_sessions,
+    cache_user,
+    invalidate_user_cache,
     cache_set,
     cache_get,
     cache_delete_pattern,
@@ -138,18 +141,15 @@ async def login(body: LoginRequest, request: Request, response: Response):
     user = await sync_user_plan(user)
     token = create_access_token(user["id"], email)
     set_auth_cookie(response, token)
-    
-    # Store session in Redis (7 days TTL)
-    await set_session(user["id"], user)
-    
-    # Check cache for businesses first
-    cache_key = f"businesses:{user['id']}"
-    businesses = await cache_get(cache_key)
-    if businesses is None:
-        businesses = await list_user_businesses(user["id"])
-        # Cache for 30 minutes
-        await cache_set(cache_key, businesses, ttl=1800)
-    
+
+    # Bind the new token to the user (multi-device friendly).
+    await set_session(token, user["id"])
+    # Warm the per-user cache so subsequent requests skip Mongo.
+    await cache_user(user["id"], user)
+
+    # Cache businesses (30 min TTL via list_user_businesses helper).
+    businesses = await list_user_businesses(user["id"])
+
     return {
         "user": public_user(user),
         "businesses": businesses,
@@ -158,11 +158,20 @@ async def login(body: LoginRequest, request: Request, response: Response):
 
 @router.post("/logout")
 async def logout(response: Response, user: dict = Depends(get_current_user)):
-    # Delete session from Redis
-    await delete_session(user["id"])
-    # Clear cookie
+    # Revoke ONLY this device's session — other devices stay signed in.
+    token = user.get("_session_token")
+    if token:
+        await delete_session(token)
     clear_auth_cookie(response)
     return {"ok": True}
+
+
+@router.post("/logout-all")
+async def logout_all(response: Response, user: dict = Depends(get_current_user)):
+    """Force sign-out from every device for this user."""
+    revoked = await delete_all_user_sessions(user["id"])
+    clear_auth_cookie(response)
+    return {"ok": True, "revoked_sessions": revoked}
 
 
 def _origin_from_request(request: Request) -> str:
@@ -235,6 +244,9 @@ async def reset_password(body: ResetPasswordRequest, request: Request):
     )
     # Clear failed login attempts and unlock account (Redis)
     await clear_failed_logins(f"email:{user['email']}")
+    # Force sign-out from every device (security: password just changed)
+    await delete_all_user_sessions(user["id"])
+    await invalidate_user_cache(user["id"])
 
     # Issue a follow-up "lock my account" token for the security-alert flow
     now = datetime.now(timezone.utc)
@@ -294,6 +306,8 @@ async def lock_account(body: LockAccountRequest):
         {"user_id": user["id"], "used_at": None},
         {"$set": {"used_at": datetime.now(timezone.utc)}},
     )
+    await delete_all_user_sessions(user["id"])
+    await invalidate_user_cache(user["id"])
     return {"ok": True, "email": user["email"]}
 
 

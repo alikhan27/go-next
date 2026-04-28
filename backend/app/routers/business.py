@@ -6,6 +6,7 @@ from ..models import CreateBusinessRequest, UpdateBusinessRequest
 from ..security import get_current_user
 from ..services import (
     create_business_doc,
+    invalidate_user_businesses,
     list_user_businesses,
     owned_business_or_404,
     plan_limits,
@@ -24,6 +25,7 @@ async def my_businesses(user: dict = Depends(get_current_user)):
 @router.post("")
 async def create_outlet(body: CreateBusinessRequest, user: dict = Depends(get_current_user)):
     business = await create_business_doc(user, body)
+    await invalidate_user_businesses(user["id"])
     return public_business(business)
 
 
@@ -60,6 +62,7 @@ async def update_outlet(
         )
     if updates:
         await db.businesses.update_one({"id": business["id"]}, {"$set": updates})
+        await invalidate_user_businesses(user["id"])
     updated = await db.businesses.find_one({"id": business["id"]}, {"_id": 0})
     return public_business(updated)
 
@@ -70,4 +73,5 @@ async def delete_outlet(business_id: str, user: dict = Depends(get_current_user)
     await db.businesses.delete_one({"id": business_id})
     await db.queue.delete_many({"business_id": business_id})
     await db.services.delete_many({"business_id": business_id})
+    await invalidate_user_businesses(user["id"])
     return {"ok": True}
