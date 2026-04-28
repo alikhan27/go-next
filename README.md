@@ -12,6 +12,50 @@ Go-Next replaces paper notebooks and chaotic WhatsApp groups at the front desk w
 - **Cache / Sessions**: Redis (token-keyed multi-device sessions, login rate-limiting, per-user cache)
 - **Authentication**: JWT in httpOnly cookies, server-side revocation via Redis
 
+## How the pieces fit together
+
+The app runs as **four independent processes** that talk to each other over the network. All four must be up for login to succeed.
+
+```
+┌─────────────────┐
+│  React (CRA)    │      Browser-side UI. Calls the API at
+│  :3000          │ ───► REACT_APP_BACKEND_URL on every request.
+│  (yarn start)   │
+└────────┬────────┘
+         │ HTTPS (httpOnly cookie carries the JWT)
+         ▼
+┌─────────────────┐      The API server. uvicorn is the ASGI process
+│  FastAPI        │      that hosts the FastAPI `app` object — it owns
+│  :8001          │      the port, parses HTTP, calls your route handlers.
+│  (uvicorn)      │      Without it, your Python code never sees a request.
+└──┬───────────┬──┘
+   │           │
+   │           └────────────────────────┐
+   ▼                                    ▼
+┌─────────────────┐              ┌─────────────────┐
+│   MongoDB       │              │     Redis       │
+│   :27017        │              │     :6379       │
+│                 │              │                 │
+│ Source of truth │              │ Hot, ephemeral  │
+│ for users,      │              │ state:          │
+│ businesses,     │              │  • sessions     │
+│ tickets,        │              │  • rate-limits  │
+│ services,       │              │  • user cache   │
+│ analytics.      │              │  • lockouts     │
+└─────────────────┘              └─────────────────┘
+```
+
+**Why uvicorn?** FastAPI is just a Python library that defines routes — it doesn't open a socket on its own. uvicorn is the *web server* that listens on port 8001, accepts HTTP, and hands each request to FastAPI. (Same role as `node index.js` for Express, or `rails server` for Rails.) It's chosen over Gunicorn because FastAPI is async and uvicorn speaks the matching ASGI protocol.
+
+**Why Redis is mandatory.** The backend deliberately offloads three hot-path concerns to Redis to keep MongoDB cool under load:
+1. **Sessions** — every authenticated request looks up `session:{token}` in Redis. No Redis ⇒ login appears to work but the next request returns `401`.
+2. **Login rate-limiting** — counts failed attempts per email and locks accounts. The `/auth/login` endpoint touches Redis before it ever queries Mongo, so a Redis outage surfaces as a `500` on login.
+3. **Per-user cache** — `user:{user_id}` is read on every authenticated request; Mongo is hit only on cache miss.
+
+**Why MongoDB is mandatory.** It stores the actual durable data (users, businesses, tickets, password hashes). Cold starts read from here to warm Redis.
+
+**Startup order:** Mongo + Redis first (they don't depend on anything), then uvicorn (which connects to both at boot), then the frontend (which connects to uvicorn).
+
 ## Features
 
 ### For Business Owners
