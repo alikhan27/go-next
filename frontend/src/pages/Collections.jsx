@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Navigate } from "react-router-dom";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { api, formatApiErrorDetail } from "../lib/api";
+import { collectionsService } from "../services/collectionsService";
+import { businessService } from "../services/businessService";
 import { useAuth } from "../context/AuthContext";
 import { usePlans } from "../context/PlanContext";
 import DashboardHeader from "../components/DashboardHeader";
@@ -107,12 +109,17 @@ export default function Collections() {
     if (!business) return;
     setLoading(true);
     try {
-      const [collectionsRes, servicesRes] = await Promise.all([
-        api.get(`/business/${business.id}/collections?days=${days}&paid=${paidFilter}&payment_method=${paymentMethodFilter}&service_id=${encodeURIComponent(serviceFilter)}`),
-        api.get(`/business/${business.id}/services`).catch(() => ({ data: [] })),
+      const [collectionsData, servicesData] = await Promise.all([
+        collectionsService.getCollections(business.id, {
+          days,
+          paid: paidFilter,
+          payment_method: paymentMethodFilter,
+          service_id: serviceFilter,
+        }),
+        businessService.getServices(business.id).catch(() => []),
       ]);
-      setData(collectionsRes.data);
-      setServices((servicesRes.data || []).filter((svc) => svc.is_active !== false));
+      setData(collectionsData);
+      setServices((servicesData || []).filter((svc) => svc.is_active !== false));
     } finally {
       setLoading(false);
     }
@@ -133,9 +140,11 @@ export default function Collections() {
     if (!editingTicket) return;
     setUpdatingAmount(true);
     try {
-      await api.patch(`/business/${business.id}/queue/${editingTicket.id}/amount`, {
-        service_price: Number(editAmount) || 0,
-      });
+      await collectionsService.updateAmount(
+        business.id,
+        editingTicket.id,
+        Number(editAmount) || 0,
+      );
       toast.success("Amount updated");
       setAmountDialogOpen(false);
       setEditingTicket(null);
@@ -158,10 +167,7 @@ export default function Collections() {
     if (!paymentTicket || !paymentMethod) return;
     setUpdatingPayment(true);
     try {
-      await api.patch(`/business/${business.id}/queue/${paymentTicket.id}/paid`, {
-        paid: true,
-        payment_method: paymentMethod,
-      });
+      await collectionsService.markAsPaid(business.id, paymentTicket.id, paymentMethod);
       toast.success(`Marked as paid via ${paymentMethod}`);
       setPaymentDialogOpen(false);
       setPaymentTicket(null);

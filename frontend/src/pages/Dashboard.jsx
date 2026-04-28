@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
 import { api, formatApiErrorDetail, API } from "../lib/api";
+import { queueService } from "../services/queueService";
+import { businessService } from "../services/businessService";
 import { useAuth } from "../context/AuthContext";
 import DashboardHeader from "../components/DashboardHeader";
 import { Button } from "../components/ui/button";
@@ -117,12 +119,12 @@ export default function Dashboard() {
   const load = useCallback(async () => {
     if (!business) return;
     try {
-      const [s, svc] = await Promise.all([
-        api.get(`/business/${business.id}/stats`),
-        api.get(`/business/${business.id}/services`).catch(() => ({ data: [] })),
+      const [statsData, servicesData] = await Promise.all([
+        queueService.getStats(business.id),
+        businessService.getServices(business.id).catch(() => []),
       ]);
-      setStats(s.data);
-      setServices((svc.data || []).filter((item) => item.is_active !== false));
+      setStats(statsData);
+      setServices((servicesData || []).filter((item) => item.is_active !== false));
     } catch {
       /* ignore */
     }
@@ -161,7 +163,7 @@ export default function Dashboard() {
     if (addingWalkIn) return;
     setAddingWalkIn(true);
     try {
-      await api.post(`/business/${business.id}/queue/walk-in`, walkIn);
+      await queueService.addWalkIn(business.id, walkIn);
       setWalkIn({ customer_name: "", customer_phone: "", service_ids: [] });
       setWalkInOpen(false);
       await load();
@@ -186,7 +188,7 @@ export default function Dashboard() {
     if (updatingStatus[id]) return;
     setUpdatingStatus(prev => ({ ...prev, [id]: true }));
     try {
-      await api.patch(`/business/${business.id}/queue/${id}/status`, { status });
+      await queueService.updateStatus(business.id, id, status);
       await load();
       const statusLabels = {
         serving: "Started serving",
@@ -205,7 +207,7 @@ export default function Dashboard() {
     if (callingNext) return;
     setCallingNext(true);
     try {
-      await api.post(`/business/${business.id}/queue/call-next`);
+      await queueService.callNext(business.id);
       await load();
       toast.success("Next guest is now serving");
     } catch (err) {
@@ -280,7 +282,7 @@ export default function Dashboard() {
         payment_method: shouldBePaid ? completion.payment_method : null,
       };
       
-      await api.post(`/business/${business.id}/queue/${ticketToComplete.id}/complete`, payload);
+      await queueService.completeTicket(business.id, ticketToComplete.id, payload);
       setCompleteOpen(false);
       setTicketToComplete(null);
       await load();
@@ -295,7 +297,7 @@ export default function Dashboard() {
   const toggleOnline = async (v) => {
     setIsOnline(v);
     try {
-      const { data } = await api.patch(`/business/${business.id}`, { is_online: v });
+      const data = await businessService.updateBusiness(business.id, { is_online: v });
       updateBusiness(data);
       toast.success(v ? "Queue is open" : "Queue is paused");
     } catch (err) {
