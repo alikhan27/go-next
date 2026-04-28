@@ -89,7 +89,11 @@ async def login(body: LoginRequest, request: Request, response: Response):
 
     await enforce_lockout(identifier)
 
-    user = await db.users.find_one({"email": email})
+    # OPTIMIZATION: Use projection to fetch only necessary fields
+    user = await db.users.find_one(
+        {"email": email},
+        {"email": 1, "password_hash": 1, "id": 1, "is_locked": 1, "is_approved": 1, "role": 1, "plan": 1, "plan_started_at": 1, "plan_expires_at": 1, "pending_plan": 1}
+    )
     if not user or not verify_password(body.password, user["password_hash"]):
         await record_failed_attempt(identifier)
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -111,6 +115,8 @@ async def login(body: LoginRequest, request: Request, response: Response):
     user = await sync_user_plan(user)
     token = create_access_token(user["id"], email)
     set_auth_cookie(response, token)
+    
+    # OPTIMIZATION: Fetch businesses asynchronously (still needed for response, but could be cached)
     businesses = await list_user_businesses(user["id"])
     return {
         "user": public_user(user),
