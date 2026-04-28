@@ -37,3 +37,29 @@ def super_session():
     assert r.status_code == 200, f"super login failed for {SUPER_EMAIL}: {r.status_code} {r.text}"
     data = r.json()
     yield s, data
+
+
+def test_admin_user_businesses(super_session):
+    s, _ = super_session
+
+    users_resp = s.get(f"{API}/admin/users?page=1&page_size=10", timeout=15)
+    assert users_resp.status_code == 200, f"Failed to load admin users: {users_resp.status_code} {users_resp.text}"
+    users_data = users_resp.json()
+    assert isinstance(users_data.get("items"), list), "Admin users response is missing items"
+
+    if users_data["items"]:
+        owner = users_data["items"][0]
+        owner_id = owner["id"]
+        businesses_resp = s.get(
+            f"{API}/admin/users/{owner_id}/businesses",
+            timeout=15,
+        )
+        assert businesses_resp.status_code == 200, (
+            f"Failed to load owner businesses for {owner_id}: "
+            f"{businesses_resp.status_code} {businesses_resp.text}"
+        )
+        payload = businesses_resp.json()
+        assert isinstance(payload.get("items"), list), "Owner businesses response is missing items"
+        for item in payload["items"]:
+            assert item.get("owner_email") == owner.get("email", ""), "Owner email does not match"
+            assert item.get("owner_name") == owner.get("name", ""), "Owner name does not match"

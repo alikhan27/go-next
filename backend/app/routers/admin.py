@@ -162,6 +162,44 @@ async def admin_users(
     return {"items": out, "total": total, "page": page, "page_size": page_size}
 
 
+@router.get("/users/{user_id}/businesses")
+async def admin_user_businesses(
+    user_id: str,
+    sort_by: str = "business_name",
+    sort_dir: str = "asc",
+    search: str = "",
+    user: dict = Depends(get_current_user),
+):
+    require_super_admin(user)
+    query = {"owner_user_id": user_id}
+    if search:
+        query["$or"] = [
+            {"business_name": {"$regex": search, "$options": "i"}},
+            {"city": {"$regex": search, "$options": "i"}},
+        ]
+
+    sort_order = 1 if sort_dir == "asc" else -1
+    docs = (
+        await db.businesses.find(query, {"_id": 0})
+        .sort(sort_by, sort_order)
+        .to_list(200)
+    )
+
+    owner = None
+    if docs:
+        owner = await db.users.find_one(
+            {"id": user_id}, {"_id": 0, "email": 1, "name": 1, "plan": 1}
+        )
+    out = []
+    for b in docs:
+        pb = public_business(b)
+        pb["owner_email"] = owner.get("email", "") if owner else ""
+        pb["owner_name"] = owner.get("name", "") if owner else ""
+        pb["owner_plan"] = owner.get("plan", "free") if owner else "free"
+        out.append(pb)
+    return {"items": out}
+
+
 @router.patch("/users/{user_id}")
 async def admin_update_user(
     user_id: str,

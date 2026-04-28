@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -42,7 +42,6 @@ import {
   ChevronDown,
   LogOut,
   Users,
-  Building2,
   LayoutDashboard,
   Shield,
   Trash2,
@@ -56,6 +55,13 @@ import { Palette } from "lucide-react";
 import { useTheme, THEMES } from "../context/ThemeContext";
 import BrandLogo from "../components/LogoMark";
 import ConfirmDialog from "../components/common/ConfirmDialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "../components/ui/dialog";
 function Stat({ label, value, accent, hint, testid }) {
   return (
     <div
@@ -143,7 +149,6 @@ export default function AdminPanel() {
 
   // Use server-side state
   const usersTable = useServerTable("/admin/users");
-  const outletsTable = useServerTable("/admin/businesses");
   const pendingUsersTable = useServerTable("/admin/users/pending");
   const rejectedUsersTable = useServerTable("/admin/users/rejected", {
     initialSort: { key: "rejected_at", dir: "desc" },
@@ -156,6 +161,9 @@ export default function AdminPanel() {
   const [plans, setPlans] = useState([]);
   const [savingPlans, setSavingPlans] = useState({});
   const [savingTheme, setSavingTheme] = useState(false);
+  const [ownerOutletMap, setOwnerOutletMap] = useState({});
+  const [selectedOwner, setSelectedOwner] = useState(null);
+  const [ownerDialogOpen, setOwnerDialogOpen] = useState(false);
   const { theme, updateTheme } = useTheme();
   const appAccentColor = theme?.vars?.["--app-accent"];
   const t = THEMES.find((th) => th.id === theme.theme_id) || THEMES[0];
@@ -255,20 +263,51 @@ export default function AdminPanel() {
     [pendingUsersTable, rejectedUsersTable, loadData],
   );
 
-  const deleteOutlet = useCallback(
-    async (businessId) => {
+  const copyEmailToClipboard = useCallback(async (email) => {
+    try {
+      await navigator.clipboard.writeText(email);
+      toast.success("Email copied to clipboard");
+    } catch (err) {
+      toast.error("Unable to copy email");
+    }
+  }, []);
+
+  const loadOwnerOutlets = useCallback(
+    async (ownerId) => {
+      if (ownerOutletMap[ownerId]) return;
+      setOwnerOutletMap((prev) => ({
+        ...prev,
+        [ownerId]: { loading: true, items: [] },
+      }));
+
       try {
-        await api.delete(`/admin/businesses/${businessId}`);
-        toast.success("Outlet deleted!");
-        outletsTable.refresh();
-        loadData(); // Refresh stats, lockouts etc.
+        const { data } = await api.get(`/admin/users/${ownerId}/businesses`);
+        setOwnerOutletMap((prev) => ({
+          ...prev,
+          [ownerId]: { loading: false, items: data.items || [] },
+        }));
       } catch (err) {
         toast.error(
           formatApiErrorDetail(err.response?.data?.detail) || err.message,
         );
+        setOwnerOutletMap((prev) => ({
+          ...prev,
+          [ownerId]: { loading: false, items: [] },
+        }));
       }
     },
-    [outletsTable, loadData],
+    [ownerOutletMap],
+  );
+
+  const openOwnerDialog = useCallback(
+    (owner) => {
+      setSelectedOwner(owner);
+      setOwnerDialogOpen(true);
+      if (owner.outlet_count > 0 && !ownerOutletMap[owner.id]) {
+        loadOwnerOutlets(owner.id);
+      }
+    },
+    [loadOwnerOutlets, ownerOutletMap],
   );
 
   useEffect(() => {
@@ -290,9 +329,7 @@ export default function AdminPanel() {
         {" "}
         <div className="w-full px-5 py-3 flex flex-wrap items-center gap-3">
           <Link to="/" className="flex items-center gap-2">
-            <span
-              className="flex h-8 w-8 items-center justify-center"
-            >
+            <span className="flex h-8 w-8 items-center justify-center">
               <BrandLogo compact color={appAccentColor} />
             </span>
             <span className="text-sm font-semibold">Go-Next</span>
@@ -357,14 +394,25 @@ export default function AdminPanel() {
         </p>
 
         <div
-          className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5"
           data-testid="admin-stats"
         >
           <Stat
             label="Total owners"
             value={stats?.total_users ?? "—"}
-            hint={`${stats?.premium_users ?? 0} on Premium`}
+            hint={`${stats?.free_users ?? 0} free · ${stats?.premium_users ?? 0} Premium`}
             testid="admin-stat-users"
+          />
+          <Stat
+            label="Conversion"
+            value={
+              stats && stats.total_users
+                ? `${Math.round((stats.premium_users / stats.total_users) * 100)}%`
+                : "—"
+            }
+            accent="text-primary"
+            hint="of owners on Premium"
+            testid="admin-stat-conversion"
           />
           <Stat
             label="Outlets"
@@ -412,20 +460,6 @@ export default function AdminPanel() {
               data-testid="admin-tab-users"
             >
               <Users className="h-3.5 w-3.5 mr-1.5" /> Owners
-            </TabsTrigger>
-            <TabsTrigger
-              value="outlets"
-              className="rounded-full data-[state=active]:bg-secondary data-[state=active]:text-primary"
-              data-testid="admin-tab-outlets"
-            >
-              <Building2 className="h-3.5 w-3.5 mr-1.5" /> Outlets
-            </TabsTrigger>
-            <TabsTrigger
-              value="overview"
-              className="rounded-full data-[state=active]:bg-secondary data-[state=active]:text-primary"
-              data-testid="admin-tab-overview"
-            >
-              <LayoutDashboard className="h-3.5 w-3.5 mr-1.5" /> Overview
             </TabsTrigger>
             <TabsTrigger
               value="security"
@@ -768,95 +802,117 @@ export default function AdminPanel() {
                     </TableRow>
                   )}
                   {usersTable.items.map((u) => (
-                    <TableRow key={u.id} data-testid={`admin-user-row-${u.id}`}>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-stone-900">
-                            {u.name || "—"}
+                    <Fragment key={u.id}>
+                      <TableRow
+                        key={u.id}
+                        data-testid={`admin-user-row-${u.id}`}
+                        className="cursor-pointer hover:bg-stone-50"
+                        onClick={() => openOwnerDialog(u)}
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-stone-900">
+                                {u.name || "—"}
+                              </span>
+                              {u.is_locked ? (
+                                <Badge className="w-fit mt-1 rounded-full border font-normal bg-red-50 text-red-600 border-red-100 text-[10px]">
+                                  Frozen Account
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-stone-500">
+                                  Owner
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-stone-600 text-sm">
+                          <span
+                            className="cursor-pointer text-primary underline decoration-dotted"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              copyEmailToClipboard(u.email);
+                            }}
+                            title="Copy email"
+                            data-testid={`admin-owner-email-${u.id}`}
+                          >
+                            {u.email}
                           </span>
-                          {u.is_locked ? (
-                            <Badge className="w-fit mt-1 rounded-full border font-normal bg-red-50 text-red-600 border-red-100 text-[10px]">
-                              Frozen Account
-                            </Badge>
-                          ) : (
-                            <span className="text-xs text-stone-500">
-                              Owner
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-stone-600 text-sm">
-                        {u.email}
-                      </TableCell>
-                      <TableCell className="text-center font-medium">
-                        {u.outlet_count}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={`rounded-full border font-normal ${planStyle(u.plan)}`}
+                        </TableCell>
+                        <TableCell className="text-center font-medium">
+                          {u.outlet_count}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            className={`rounded-full border font-normal ${planStyle(u.plan)}`}
+                          >
+                            {planLabelText(u.plan)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-stone-500 text-xs">
+                          {u.created_at
+                            ? new Date(u.created_at).toLocaleDateString()
+                            : "—"}
+                        </TableCell>
+                        <TableCell
+                          className="text-right pr-5"
+                          onClick={(event) => event.stopPropagation()}
                         >
-                          {planLabelText(u.plan)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-stone-500 text-xs">
-                        {u.created_at
-                          ? new Date(u.created_at).toLocaleDateString()
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-right pr-5">
-                        <div className="flex justify-end gap-2">
-                          {u.is_locked ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="rounded-full border-red-200 text-red-700 hover:bg-red-50"
-                              onClick={() => setLocked(u.id, false)}
-                              data-testid={`unlock-account-${u.id}`}
-                            >
-                              Restore
-                            </Button>
-                          ) : null}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
+                          <div className="flex justify-end gap-2">
+                            {u.is_locked ? (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="rounded-full border-stone-300"
-                                data-testid={`plan-menu-${u.id}`}
+                                className="rounded-full border-red-200 text-red-700 hover:bg-red-50"
+                                onClick={() => setLocked(u.id, false)}
+                                data-testid={`unlock-account-${u.id}`}
                               >
-                                Plan{" "}
-                                <ChevronDown className="h-3.5 w-3.5 ml-1" />
+                                Restore
                               </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-44">
-                              <DropdownMenuLabel className="font-normal text-xs">
-                                Set plan
-                              </DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              {[
-                                { id: "free", label: "Free" },
-                                { id: "premium", label: "Premium" },
-                                { id: "premium_plus", label: "Premium Plus" },
-                              ].map((p) => (
-                                <DropdownMenuItem
-                                  key={p.id}
-                                  disabled={u.plan === p.id}
-                                  onClick={() => setPlan(u.id, p.id)}
-                                  data-testid={`set-plan-${p.id}-${u.id}`}
+                            ) : null}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-full border-stone-300"
+                                  data-testid={`plan-menu-${u.id}`}
                                 >
-                                  {p.label}
-                                  {u.plan === p.id && (
-                                    <span className="ml-auto text-[10px] text-stone-400">
-                                      current
-                                    </span>
-                                  )}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                                  Plan{" "}
+                                  <ChevronDown className="h-3.5 w-3.5 ml-1" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuLabel className="font-normal text-xs">
+                                  Set plan
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                {[
+                                  { id: "free", label: "Free" },
+                                  { id: "premium", label: "Premium" },
+                                  { id: "premium_plus", label: "Premium Plus" },
+                                ].map((p) => (
+                                  <DropdownMenuItem
+                                    key={p.id}
+                                    disabled={u.plan === p.id}
+                                    onClick={() => setPlan(u.id, p.id)}
+                                    data-testid={`set-plan-${p.id}-${u.id}`}
+                                  >
+                                    {p.label}
+                                    {u.plan === p.id && (
+                                      <span className="ml-auto text-[10px] text-stone-400">
+                                        current
+                                      </span>
+                                    )}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    </Fragment>
                   ))}
                 </TableBody>
               </Table>
@@ -867,122 +923,46 @@ export default function AdminPanel() {
                 testidPrefix="users"
               />
             </div>
-          </TabsContent>
 
-          <TabsContent value="outlets" className="mt-6">
-            <div
-              className="rounded-2xl border border-stone-200 bg-white overflow-hidden"
-              data-testid="admin-outlets-table"
-            >
-              <TableToolbar
-                query={outletsTable.query}
-                onQueryChange={outletsTable.setSearch}
-                pageSize={outletsTable.pageSize}
-                onPageSizeChange={outletsTable.setPageSize}
-                total={outletsTable.total}
-                placeholder="Search by outlet or city…"
-                testidPrefix="outlets"
-              />
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <SortableHead
-                      label="Outlet"
-                      sortKey="business_name"
-                      sort={outletsTable.sort}
-                      onToggle={outletsTable.toggleSort}
-                    />
-                    <SortableHead
-                      label="Owner"
-                      sortKey="owner_name"
-                      sort={outletsTable.sort}
-                      onToggle={outletsTable.toggleSort}
-                    />
-                    <SortableHead
-                      label="Location"
-                      sortKey="city"
-                      sort={outletsTable.sort}
-                      onToggle={outletsTable.toggleSort}
-                    />
-                    <TableHead className="text-center">Stations</TableHead>
-                    <TableHead>Online</TableHead>
-                    <TableHead className="text-right pr-5">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {outletsTable.loading && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="text-center py-10 text-stone-500"
+            <Dialog open={ownerDialogOpen} onOpenChange={setOwnerDialogOpen}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>
+                    {selectedOwner?.name || "Owner outlets"}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {selectedOwner?.outlet_count
+                      ? `Showing ${selectedOwner.outlet_count} outlet${selectedOwner.outlet_count === 1 ? "" : "s"} for ${selectedOwner.name}.`
+                      : "This owner has no outlets yet."}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="mt-4 space-y-3">
+                  {selectedOwner &&
+                  ownerOutletMap[selectedOwner.id]?.loading ? (
+                    <p className="text-sm text-stone-500">Loading outlets…</p>
+                  ) : selectedOwner &&
+                    ownerOutletMap[selectedOwner.id]?.items?.length ? (
+                    ownerOutletMap[selectedOwner.id].items.map((business) => (
+                      <div
+                        key={business.id}
+                        className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm"
                       >
-                        Loading…
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {!outletsTable.loading && outletsTable.total === 0 && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="text-center py-10 text-stone-500"
-                      >
-                        No outlets yet.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {outletsTable.items.map((b) => (
-                    <TableRow
-                      key={b.id}
-                      data-testid={`admin-outlet-row-${b.id}`}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-stone-100 flex items-center justify-center text-xs font-medium text-stone-500">
-                            {b.business_name.substring(0, 2).toUpperCase()}
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="font-semibold text-stone-900">
+                              {business.business_name}
+                            </p>
+                            <p className="text-sm text-stone-500">
+                              {[business.city, business.state, business.pincode]
+                                .filter(Boolean)
+                                .join(", ") || "Location not set"}
+                            </p>
                           </div>
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-stone-900">
-                              {b.business_name}
-                            </span>
-                            <span className="text-xs text-stone-500 capitalize">
-                              {b.business_type}
-                            </span>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium">
-                            {b.owner_name || "—"}
-                          </span>
-                          <span className="text-xs text-stone-500">
-                            {b.owner_email}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-stone-600 text-sm">
-                        {[b.city, b.state, b.pincode]
-                          .filter(Boolean)
-                          .join(", ") || "—"}
-                      </TableCell>
-                      <TableCell className="text-center font-medium">
-                        {b.total_chairs}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={b.is_online ? "default" : "secondary"}
-                          className={`rounded-full border font-normal ${b.is_online ? "bg-success/10 text-success border-success/20" : "bg-stone-100 text-stone-600 border-stone-200"}`}
-                        >
-                          {b.is_online ? "Accepting" : "Paused"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right pr-5">
-                        <div className="flex justify-end gap-2">
                           <Link
-                            to={`/display/${b.id}`}
+                            to={`/display/${business.id}`}
                             target="_blank"
                             rel="noreferrer"
-                            data-testid={`admin-open-display-${b.id}`}
                           >
                             <Button
                               size="sm"
@@ -993,59 +973,17 @@ export default function AdminPanel() {
                               <Tv className="h-4 w-4" />
                             </Button>
                           </Link>
-                          <ConfirmDialog
-                            trigger={
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="rounded-full text-red-600 hover:bg-red-50 hover:text-red-700"
-                                data-testid={`admin-delete-outlet-${b.id}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            }
-                            title={`Delete ${b.business_name}?`}
-                            description={`This permanently removes the outlet and all its tickets. This affects the owner (${b.owner_email}).`}
-                            confirmLabel="Delete outlet"
-                            onConfirm={() => deleteOutlet(b.id)}
-                            testidPrefix={`admin-confirm-delete-${b.id}`}
-                          />
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              <TablePagination
-                page={outletsTable.page}
-                totalPages={outletsTable.totalPages}
-                onPageChange={outletsTable.setPage}
-                testidPrefix="outlets"
-              />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="overview" className="mt-6">
-            <div
-              className="rounded-2xl border border-stone-200 bg-white p-6 grid gap-4 sm:grid-cols-3"
-              data-testid="admin-overview"
-            >
-              <Stat label="Free owners" value={stats?.free_users ?? "—"} />
-              <Stat
-                label="Premium owners"
-                value={stats?.premium_users ?? "—"}
-                accent="text-primary"
-              />
-              <Stat
-                label="Conversion"
-                value={
-                  stats && stats.total_users
-                    ? `${Math.round((stats.premium_users / stats.total_users) * 100)}%`
-                    : "—"
-                }
-                hint="of owners on Premium"
-              />
-            </div>
+                      </div>
+                    ))
+                  ) : selectedOwner ? (
+                    <p className="text-sm text-stone-500">
+                      No outlets available for this owner.
+                    </p>
+                  ) : null}
+                </div>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           <TabsContent value="security" className="mt-6">
