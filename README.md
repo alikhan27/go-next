@@ -7,9 +7,10 @@ A modern, calm queue management application for salons, clinics, spas, and resta
 Go-Next replaces paper notebooks and chaotic WhatsApp groups at the front desk with a clean, organic queue management solution.
 
 ### Tech Stack
-- **Frontend**: React 19, React Router 7, Shadcn/ui, Tailwind CSS
-- **Backend**: FastAPI + Motor (MongoDB)
-- **Authentication**: JWT (httpOnly cookies, 7-day expiration)
+- **Frontend**: React 19, React Router 7, Shadcn/ui, Tailwind CSS (built with CRA + Craco)
+- **Backend**: FastAPI + Motor (async MongoDB driver)
+- **Cache / Sessions**: Redis (token-keyed multi-device sessions, login rate-limiting, per-user cache)
+- **Authentication**: JWT in httpOnly cookies, server-side revocation via Redis
 
 ## Features
 
@@ -35,50 +36,93 @@ Go-Next replaces paper notebooks and chaotic WhatsApp groups at the front desk w
 ## Getting Started
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- MongoDB
-- yarn
+- **Node.js** 18+ (Node 22 is what we use; the project ships a `packageManager` field for yarn)
+- **Python** 3.11+
+- **MongoDB** running locally on `:27017`
+- **Redis** running locally on `:6379`
+- **yarn** (this repo is yarn-only — see Troubleshooting below if you accidentally `npm install`)
 
-### Installation
+On macOS:
+```bash
+brew install mongodb-community redis
+brew services start mongodb-community
+brew services start redis
+corepack enable                      # ships with Node 18+, exposes yarn
+```
 
-1. Clone the repository:
+### 1. Clone
+
 ```bash
 git clone https://github.com/alikhan27/go-next.git
 cd go-next
 ```
 
-2. Install backend dependencies:
+### 2. Backend (`:8001`)
+
 ```bash
 cd backend
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-3. Install frontend dependencies:
-```bash
-cd frontend
-yarn install
-```
+# Create backend/.env
+cat > .env <<'EOF'
+MONGO_URL="mongodb://localhost:27017"
+DB_NAME="go_next_db"
+REDIS_URL="redis://localhost:6379"
+JWT_SECRET="change-me-to-a-long-random-string"
+CORS_ORIGINS="http://localhost:3000"
+ADMIN_EMAIL="admin@go-next.in"
+ADMIN_PASSWORD="Demo@1234"
+# Optional tuning:
+# BCRYPT_ROUNDS=12          # lower (e.g. 10) for faster login under load
+# REDIS_MAX_CONNECTIONS=100
+EOF
 
-4. Configure environment variables:
-   - Backend: `/backend/.env`
-   - Frontend: `/frontend/.env`
-
-5. Start the services:
-```bash
-# Backend (port 8001)
-cd backend
 uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+```
 
-# Frontend (port 3000)
+Seed accounts (`admin@go-next.in` and `super@go-next.in`) are created automatically on first startup.
+
+### 3. Frontend (`:3000`)
+
+```bash
 cd frontend
+
+# frontend/.env
+echo 'REACT_APP_BACKEND_URL=http://localhost:8001' > .env
+
+yarn install
 yarn start
 ```
 
+Open http://localhost:3000 and log in with the demo credentials below.
+
 ## Demo Credentials
 
-- **Owner Account**: admin@go-next.in / admin123
-- **Super Admin**: super@go-next.in / admin123
+| Role            | Email                  | Password   |
+| --------------- | ---------------------- | ---------- |
+| Business owner  | `admin@go-next.in`     | `Demo@1234`|
+| Super admin     | `super@go-next.in`     | `Demo@1234`|
+| Demo owner      | `demo@go-next.in`      | `Demo@123` |
+
+## Troubleshooting
+
+### `npm install` fails with `ERESOLVE` on `react-day-picker` / `date-fns`
+This project uses **yarn**, not npm (note the `packageManager` field in `package.json` and the committed `yarn.lock`). Use:
+
+```bash
+rm -rf node_modules package-lock.json
+yarn install
+```
+
+If you really must use npm, run `npm install --legacy-peer-deps`, but yarn is the supported path.
+
+### Login returns `500 Internal Server Error`
+Make sure Redis is running (`redis-cli ping` should return `PONG`). Sessions, rate-limiting, and the user cache all require Redis — the backend will not work without it.
+
+### Backend can't connect to MongoDB
+Verify `MONGO_URL` in `backend/.env` and that `mongod` is listening on `:27017` (`mongosh` should connect cleanly).
 
 ## Plan Tiers
 
