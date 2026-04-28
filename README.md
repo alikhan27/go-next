@@ -149,6 +149,49 @@ yarn start
 
 Open http://localhost:3000 and log in with the demo credentials below.
 
+## Daily start / stop
+
+After the first-time setup above, this is all you need every time you sit down to work. Each block runs in its **own terminal tab** — keep them open side by side.
+
+### Tab 1 — MongoDB + Redis (one-time per boot)
+On macOS the brew services keep running in the background, so usually you don't need to touch them. To verify or restart:
+```bash
+brew services list                     # check status
+brew services start mongodb-community  # if "stopped"
+brew services start redis              # if "stopped"
+```
+
+### Tab 2 — Backend
+```bash
+cd ~/ws/go-next/backend
+source .venv/bin/activate
+uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+```
+Leave it running. `--reload` picks up Python edits automatically.
+
+### Tab 3 — Frontend
+```bash
+cd ~/ws/go-next/frontend
+yarn start
+```
+Leave it running. Hot-reloads on every save.
+
+### Stopping
+- Backend / Frontend: `Ctrl+C` in the respective tab.
+- Mongo / Redis (only if you want to free RAM):
+  ```bash
+  brew services stop mongodb-community
+  brew services stop redis
+  ```
+
+### Quick health check
+If anything feels off, run these — all three should succeed:
+```bash
+redis-cli ping                                           # → PONG
+mongosh --eval "db.runCommand({ ping: 1 })"              # → { ok: 1 }
+curl -s http://localhost:8001/api/                       # → {"message":"..."} or similar 200
+```
+
 ## Demo Credentials
 
 | Role            | Email                  | Password   |
