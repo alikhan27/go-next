@@ -17,7 +17,7 @@ import {
 import { Badge } from "../components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { toast } from "sonner";
-import { BadgeCheck, Edit2 } from "lucide-react";
+import { BadgeCheck, Edit2, Search } from "lucide-react";
 
 function StatCard({ label, value, hint, accent, testid }) {
   return (
@@ -93,6 +93,9 @@ export default function Collections() {
   const [paymentTicket, setPaymentTicket] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [updatingPayment, setUpdatingPayment] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(25);
 
   useEffect(() => {
     if (!paidPlan && days !== 7) {
@@ -170,20 +173,55 @@ export default function Collections() {
     }
   };
 
+  const totals = data?.totals || {
+    amount: 0, paid_amount: 0, unpaid_amount: 0, ticket_count: 0, paid_count: 0, unpaid_count: 0,
+  };
+  const allRows = useMemo(() => data?.rows || [], [data]);
+  const series = useMemo(() => 
+    (data?.series || []).map((item) => ({
+      ...item,
+      shortDate: item.date.slice(5),
+    })),
+    [data]
+  );
+
+  // Filter rows based on search query
+  const filteredRows = useMemo(() => {
+    if (!searchQuery.trim()) return allRows;
+    const query = searchQuery.toLowerCase();
+    return allRows.filter((row) => {
+      const customerName = (row.customer_name || "").toLowerCase();
+      const tokenNumber = String(row.token_number || "");
+      const serviceNames = (row.service_names || []).join(" ").toLowerCase();
+      const amount = String(row.service_price || "");
+      return (
+        customerName.includes(query) ||
+        tokenNumber.includes(query) ||
+        serviceNames.includes(query) ||
+        amount.includes(query)
+      );
+    });
+  }, [allRows, searchQuery]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredRows.length / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedRows = useMemo(
+    () => filteredRows.slice(startIndex, endIndex),
+    [filteredRows, startIndex, endIndex]
+  );
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
   if (auth === null) return null;
   if (!business) {
     if (businesses.length === 0) return <Navigate to="/dashboard/outlets" replace />;
     return <Navigate to={`/dashboard/${businesses[0].id}/collections`} replace />;
   }
-
-  const totals = data?.totals || {
-    amount: 0, paid_amount: 0, unpaid_amount: 0, ticket_count: 0, paid_count: 0, unpaid_count: 0,
-  };
-  const rows = data?.rows || [];
-  const series = (data?.series || []).map((item) => ({
-    ...item,
-    shortDate: item.date.slice(5),
-  }));
 
   return (
     <div className="min-h-screen bg-background">
@@ -320,7 +358,35 @@ export default function Collections() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-stone-200 bg-white overflow-hidden" data-testid="collections-table">
+        {/* Search Bar */}
+        <div className="mt-6 flex items-center gap-4">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+            <Input
+              type="text"
+              placeholder="Search by customer, token, service, or amount..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-10 pl-9 rounded-full border-stone-300"
+              data-testid="collections-search"
+            />
+          </div>
+          {searchQuery && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSearchQuery("")}
+              className="rounded-full"
+            >
+              Clear
+            </Button>
+          )}
+          <div className="text-sm text-stone-500">
+            {filteredRows.length} of {allRows.length} tickets
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-stone-200 bg-white overflow-hidden" data-testid="collections-table">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -333,14 +399,14 @@ export default function Collections() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.length === 0 ? (
+              {paginatedRows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="py-12 text-center text-stone-500">
-                    No completed tickets match these filters yet.
+                    {searchQuery ? "No tickets match your search." : "No completed tickets match these filters yet."}
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((row) => (
+                paginatedRows.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell className="pl-5">
                       <div>
@@ -415,6 +481,65 @@ export default function Collections() {
               )}
             </TableBody>
           </Table>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-stone-200 px-5 py-4">
+              <div className="text-sm text-stone-500">
+                Showing {startIndex + 1}-{Math.min(endIndex, filteredRows.length)} of {filteredRows.length} tickets
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="rounded-full"
+                >
+                  Previous
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((page) => {
+                      // Show first, last, current, and adjacent pages
+                      if (page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1) {
+                        return true;
+                      }
+                      return false;
+                    })
+                    .map((page, idx, arr) => {
+                      // Add ellipsis
+                      const prevPage = arr[idx - 1];
+                      const showEllipsis = prevPage && page - prevPage > 1;
+                      return (
+                        <div key={page} className="flex items-center gap-1">
+                          {showEllipsis && <span className="px-2 text-stone-400">...</span>}
+                          <Button
+                            variant={page === currentPage ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => setCurrentPage(page)}
+                            className={`h-8 w-8 rounded-full p-0 ${
+                              page === currentPage ? "bg-primary text-white" : ""
+                            }`}
+                          >
+                            {page}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="rounded-full"
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Amount Edit Dialog */}
