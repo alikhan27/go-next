@@ -536,13 +536,23 @@ export default function AdminPanel() {
                           : "—"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          className="mr-2 rounded-full bg-success hover:bg-success/90 text-white"
-                          onClick={() => approveUser(u.id)}
-                        >
-                          Approve
-                        </Button>
+                        <ConfirmDialog
+                          trigger={
+                            <Button
+                              size="sm"
+                              className="mr-2 rounded-full bg-success hover:bg-success/90 text-white"
+                              data-testid={`approve-user-${u.id}`}
+                            >
+                              Approve
+                            </Button>
+                          }
+                          title={`Approve ${u.email}?`}
+                          description="The user will be able to sign in immediately and start managing their outlets. You can lock them later if needed."
+                          confirmLabel="Approve user"
+                          variant="default"
+                          onConfirm={() => approveUser(u.id)}
+                          testidPrefix={`approve-user-${u.id}`}
+                        />
                         <ConfirmDialog
                           trigger={
                             <Button

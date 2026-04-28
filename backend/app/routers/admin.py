@@ -123,7 +123,7 @@ async def admin_users(
     page = max(1, page)
     page_size = max(1, min(page_size, 100))
     
-    query = {"role": "owner"}
+    query = {"role": "owner", "is_approved": {"$ne": False}}
     if search:
         query["$or"] = [
             {"email": {"$regex": search, "$options": "i"}},
