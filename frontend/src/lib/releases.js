@@ -212,7 +212,7 @@ export const RELEASES = [
       },
       {
         heading: "JWT auth for owners",
-        body: "Secure login with httpOnly cookies. Seeded demo owner admin@go-next.in / admin123 with two outlets to explore.",
+        body: "Secure login with httpOnly cookies. Seeded demo owner demo@go-next.in / admin123 with two outlets to explore.",
       },
     ],
   },

@@ -310,6 +310,21 @@ export default function AdminPanel() {
     [loadOwnerOutlets, ownerOutletMap],
   );
 
+  const setPlan = useCallback(
+    async (userId, plan) => {
+      try {
+        await api.patch(`/admin/users/${userId}`, { plan });
+        toast.success(`Plan updated to ${planLabelText(plan)}`);
+        loadData();
+      } catch (err) {
+        toast.error(
+          formatApiErrorDetail(err.response?.data?.detail) || err.message,
+        );
+      }
+    },
+    [loadData],
+  );
+
   useEffect(() => {
     loadData();
   }, [loadData]);

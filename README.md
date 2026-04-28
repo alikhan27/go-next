@@ -131,7 +131,7 @@ DB_NAME="go_next_db"
 REDIS_URL="redis://localhost:6379"
 JWT_SECRET="change-me-to-a-long-random-string"
 CORS_ORIGINS="http://localhost:3000"
-ADMIN_EMAIL="admin@go-next.in"
+ADMIN_EMAIL="demo@go-next.in"
 ADMIN_PASSWORD="Demo@1234"
 # Optional tuning:
 # BCRYPT_ROUNDS=12          # lower (e.g. 10) for faster login under load
@@ -141,7 +141,7 @@ EOF
 uvicorn server:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-Seed accounts (`admin@go-next.in` and `super@go-next.in`) are created automatically on first startup.
+Seed accounts (`demo@go-next.in` and `super@go-next.in`) are created automatically on first startup.
 
 ### 3. Frontend (`:3000`)
 
@@ -217,7 +217,7 @@ Created automatically on first backend startup (driven by `ADMIN_EMAIL` / `ADMIN
 | ---------- | ----------------- | ----------- |
 | Demo owner | `demo@go-next.in` | `Demo@1234` |
 
-> If you change `ADMIN_PASSWORD` later, the existing user is **not** re-hashed — the seed only runs when the user doesn't exist. Either drop the user (`db.users.deleteOne({email:"admin@go-next.in"})` in `mongosh`) or use the forgot-password flow.
+> If you change `ADMIN_PASSWORD` later, the existing user is **not** re-hashed — the seed only runs when the user doesn't exist. Either drop the user (`db.users.deleteOne({email:"demo@go-next.in"})` in `mongosh`) or use the forgot-password flow.
 
 ## Troubleshooting
 

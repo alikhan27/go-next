@@ -1,12 +1,22 @@
 {
-  "summary": "Iteration 5 — Plan tiers (free/premium/premium_plus) + outlet services CRUD + service-aware ETA + frontend services page. Updated /app/backend/tests/backend_test.py: fixed 2 outdated assertions (TestPlans expected old premium=10 outlets/100 stations/1000 tokens — now premium=3/10/200 + premium_plus=25/10/500; TestFreePlanLimits free max_stations 2 → 3) and added 13 new tests across 6 new classes (TestServicesCRUD, TestJoinWithService, TestETACalculation, TestWalkInWithService, TestAdminPlanUpdate, TestPremiumLimits). Added session-fixture cleanup that purges leftover TEST_* outlets so the now-stricter 3-outlet premium cap doesn't starve later tests. Total 55/55 pytest pass in 58s. Frontend Playwright (desktop) verified: pricing-free / pricing-premium / pricing-premium-plus all rendered on Landing#pricing; super@go-next.in line removed from /login while admin@go-next.in line still shown; admin login → DashboardHeader has tab-services + PREMIUM badge; Services page (Premium owner) at /dashboard/demo-salon/services renders services-page + service-name-input + service-duration-input + service-add-btn — adding 'TEST_UI_Svc 20min' shows it in the table with edit/delete (toggle + trash icons). Mobile (390×844) JoinQueue at /join/demo-salon renders join-services section with 2 service buttons (data-testid=join-service-{id}); 'Get my token' button is disabled before a service is picked. Fresh free-plan owner navigating to their /dashboard/{id}/services correctly sees services-upgrade-card with 'See plans' CTA.",
-  "backend_issues": {"critical": [], "minor": []},
+  "summary": "Iteration 5 — Plan tiers (free/premium/premium_plus) + outlet services CRUD + service-aware ETA + frontend services page. Updated /app/backend/tests/backend_test.py: fixed 2 outdated assertions (TestPlans expected old premium=10 outlets/100 stations/1000 tokens — now premium=3/10/200 + premium_plus=25/10/500; TestFreePlanLimits free max_stations 2 → 3) and added 13 new tests across 6 new classes (TestServicesCRUD, TestJoinWithService, TestETACalculation, TestWalkInWithService, TestAdminPlanUpdate, TestPremiumLimits). Added session-fixture cleanup that purges leftover TEST_* outlets so the now-stricter 3-outlet premium cap doesn't starve later tests. Total 55/55 pytest pass in 58s. Frontend Playwright (desktop) verified: pricing-free / pricing-premium / pricing-premium-plus all rendered on Landing#pricing; super@go-next.in line removed from /login while demo@go-next.in line still shown; admin login → DashboardHeader has tab-services + PREMIUM badge; Services page (Premium owner) at /dashboard/demo-salon/services renders services-page + service-name-input + service-duration-input + service-add-btn — adding 'TEST_UI_Svc 20min' shows it in the table with edit/delete (toggle + trash icons). Mobile (390×844) JoinQueue at /join/demo-salon renders join-services section with 2 service buttons (data-testid=join-service-{id}); 'Get my token' button is disabled before a service is picked. Fresh free-plan owner navigating to their /dashboard/{id}/services correctly sees services-upgrade-card with 'See plans' CTA.",
+  "backend_issues": { "critical": [], "minor": [] },
   "frontend_issues": {
     "ui_bugs": [],
     "integration_issues": [],
     "design_issues": [
-      {"screen": "Landing #pricing", "issues": ["The 'Most popular' badge string was not found inside pricing-premium card text (text length ~271 chars, only contains plan title/features). Likely styled as an icon/visual ribbon rather than a literal 'Most popular' label — review whether the spec wording should be visible as text for accessibility."]},
-      {"screen": "JoinQueue (mobile)", "issues": ["The customer 'name' input does not expose a placeholder/name attribute that contains 'name' — Playwright fill failed on input[placeholder*='name' i]. Consider adding data-testid='join-name' / 'join-phone' for testability and screen-reader friendliness."]}
+      {
+        "screen": "Landing #pricing",
+        "issues": [
+          "The 'Most popular' badge string was not found inside pricing-premium card text (text length ~271 chars, only contains plan title/features). Likely styled as an icon/visual ribbon rather than a literal 'Most popular' label — review whether the spec wording should be visible as text for accessibility."
+        ]
+      },
+      {
+        "screen": "JoinQueue (mobile)",
+        "issues": [
+          "The customer 'name' input does not expose a placeholder/name attribute that contains 'name' — Playwright fill failed on input[placeholder*='name' i]. Consider adding data-testid='join-name' / 'join-phone' for testability and screen-reader friendliness."
+        ]
+      }
     ]
   },
   "test_report_links": [
@@ -33,8 +43,11 @@
     "Frontend: Login page no longer advertises super@go-next.in; the seeded super-admin account still exists for backend/admin testing only — matches the user's 'demo only for Go-Next' intent."
   ],
   "updated_files": ["/app/backend/tests/backend_test.py"],
-  "success_rate": {"backend": "100% (55/55)", "frontend": "100% on the targeted flows (pricing, login demo line, services management add, free upgrade card, customer service picker disabled-state)"},
-  "test_credentials": "admin@go-next.in / admin123 (premium owner with demo-salon + demo-salon-andheri); super@go-next.in / admin123 (super admin). Free-plan tests register transient ui_free_*/test_free_* accounts and clean up via TEST_ prefix on outlets.",
+  "success_rate": {
+    "backend": "100% (55/55)",
+    "frontend": "100% on the targeted flows (pricing, login demo line, services management add, free upgrade card, customer service picker disabled-state)"
+  },
+  "test_credentials": "demo@go-next.in / admin123 (premium owner with demo-salon + demo-salon-andheri); super@go-next.in / admin123 (super admin). Free-plan tests register transient ui_free_*/test_free_* accounts and clean up via TEST_ prefix on outlets.",
   "seed_data_creation": "Tests create TEST_*-prefixed outlets/services/walk-ins and ui_free_*, test_free_*, test_brute_*, test_reset_*, test_lockadmin_*, test_p3_*, test_other_* users. Owner_session fixture auto-purges TEST_* outlets at start and end of session for the seeded admin to keep the 3-outlet premium cap from blocking re-runs.",
   "retest_needed": false,
   "main_agent_can_self_test": true,

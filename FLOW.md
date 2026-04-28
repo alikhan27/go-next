@@ -193,7 +193,7 @@ All routes are under `/api`.
 
 Demo credentials (seeded on backend startup):
 
-- Email: `admin@go-next.in`
+- Email: `demo@go-next.in`
 - Password: `admin123`
 - Outlets: `demo-salon` (Bandra, 4 chairs) + `demo-salon-andheri` (Andheri, 3 chairs).
 
@@ -280,7 +280,7 @@ React (frontend) ── axios withCredentials ──► FastAPI (/api)
 
 ### v1.1 — 2026-02
 
-- Signup tweaks: removed "Number of stations / chairs"; **State** + **Pincode** now required; added live `go-next.in/join/{slug}` preview on the signup page; demo admin email moved to `admin@go-next.in`.
+- Signup tweaks: removed "Number of stations / chairs"; **State** + **Pincode** now required; added live `go-next.in/join/{slug}` preview on the signup page; demo admin email moved to `demo@go-next.in`.
 
 ### v1 — 2026-02 (initial rebuild)
 

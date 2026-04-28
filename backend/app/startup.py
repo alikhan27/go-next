@@ -76,7 +76,7 @@ async def ensure_indexes() -> None:
 
 
 async def seed_demo_data() -> None:
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@go-next.in").lower()
+    admin_email = os.environ.get("ADMIN_EMAIL", "demo@go-next.in").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "Demo@1234") # Updated password
     existing_admin = await db.users.find_one({"email": admin_email})
     if not existing_admin:

@@ -1,7 +1,11 @@
 {
   "summary": "Iteration 3 regression for Free/Premium plans + Super Admin. Extended backend_test.py with 14 new tests (Plans, FreePlanLimits, SuperAdminAuthGate, SuperAdminFlows). Total 33/33 pytest pass. Playwright verified Landing #pricing cards, /admin redirect when unauthenticated, super@go-next.in login landing on /admin with stats/tabs/upgrade buttons, premium owner header plan-badge='PREMIUM', fresh free-user Outlets page showing plan-badge='FREE PLAN' + upgrade-banner + disabled new-outlet-btn, and admin guard redirecting free owner away from /admin to their dashboard.",
-  "backend_issues": {"critical": [], "minor": []},
-  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
   "test_report_links": [
     "/app/backend/tests/backend_test.py",
     "/app/test_reports/pytest/pytest_results.xml"
@@ -20,8 +24,8 @@
     "Plan limits hard-coded in PLAN_LIMITS dict; if pricing ever needs to change, a settings table is more flexible."
   ],
   "updated_files": ["/app/backend/tests/backend_test.py"],
-  "success_rate": {"backend": "100% (33/33)", "frontend": "100% core flows"},
-  "test_credentials": "admin@go-next.in / admin123 (premium owner), super@go-next.in / admin123 (super admin). Fresh free users registered per test with test_free_* emails.",
+  "success_rate": { "backend": "100% (33/33)", "frontend": "100% core flows" },
+  "test_credentials": "demo@go-next.in / admin123 (premium owner), super@go-next.in / admin123 (super admin). Fresh free users registered per test with test_free_* emails.",
   "seed_data_creation": "Tests create TEST_*-prefixed outlets and walk-ins; Playwright creates one ui_free_*@demo.com user with one outlet UI_FreeOutlet. These linger in the DB (harmless, prefixed for easy identification).",
   "retest_needed": false,
   "main_agent_can_self_test": true,

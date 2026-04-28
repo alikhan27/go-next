@@ -1,7 +1,11 @@
 {
   "summary": "Iteration 4 — full regression after backend refactor + onboarding wizard + QR poster. Extended /app/backend/tests/backend_test.py with 9 new tests covering brute-force lockout (5 fails/15-min), forgot/reset/lock-account preview flow, admin /api/admin/security/lockouts GET + DELETE, and public queue-summary/join/ticket shape. Total 42/42 pytest pass. Playwright verified (a) signup redirects to /dashboard/{id}/onboarding, (b) 4-step wizard (welcome → stations PATCH → QR → display), (c) stations input clamps to plan limit (free=2, premium=100), (d) localStorage gonext:onboarded:{userId}='1' set on finish, (e) QR poster page renders with outlet name + 'Scan to join the queue' tagline + SVG QR + print/download/back controls, (f) Dashboard shows 'Print poster for reception' button with data-testid=open-qr-poster that links to /qr-poster route.",
-  "backend_issues": {"critical": [], "minor": []},
-  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
   "test_report_links": [
     "/app/backend/tests/backend_test.py",
     "/app/test_reports/pytest/pytest_results.xml"
@@ -24,8 +28,8 @@
     "Register.jsx passes firstBusiness.id from POST /auth/register response — if backend ever returns an empty businesses[] this would crash; defensive ?.id with fallback to /dashboard would be safer."
   ],
   "updated_files": ["/app/backend/tests/backend_test.py"],
-  "success_rate": {"backend": "100% (42/42)", "frontend": "100% core flows"},
-  "test_credentials": "admin@go-next.in / admin123 (premium owner, 2 outlets), super@go-next.in / admin123 (super admin). Fresh brute-force/reset/lockout tests register unique test_* emails.",
+  "success_rate": { "backend": "100% (42/42)", "frontend": "100% core flows" },
+  "test_credentials": "demo@go-next.in / admin123 (premium owner, 2 outlets), super@go-next.in / admin123 (super admin). Fresh brute-force/reset/lockout tests register unique test_* emails.",
   "seed_data_creation": "Tests create TEST_*-prefixed outlets/walk-ins and test_brute_*, test_reset_*, test_lockadmin_*, ui_onb_* users. Harmless — all prefixed for easy purge.",
   "retest_needed": false,
   "main_agent_can_self_test": true,

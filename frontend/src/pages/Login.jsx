@@ -14,7 +14,7 @@ export default function Login() {
   const appAccentColor = theme?.vars?.["--app-accent"];
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [email, setEmail] = useState("admin@go-next.in");
+  const [email, setEmail] = useState("demo@go-next.in");
   const [password, setPassword] = useState("admin123");
   const [loading, setLoading] = useState(false);
 
@@ -132,7 +132,7 @@ export default function Login() {
             </Link>
           </p>
           <p className="mt-2 text-xs text-stone-500">
-            Demo owner: demo@go-next.in · Demo@123
+            Demo owner: demo@go-next.in · Demo@1234
           </p>
         </div>
       </div>

@@ -3,7 +3,7 @@ import requests
 import os
 
 API = os.environ.get("API", "http://localhost:8000/api")
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@go-next.in")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "demo@go-next.in")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Demo@1234")
 SUPER_EMAIL = os.environ.get("SUPER_EMAIL", "super@go-next.in")
 SUPER_PASSWORD = os.environ.get("SUPER_PASSWORD", "Super@1234")
