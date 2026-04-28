@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import {
   Plus, UserPlus, Check, X, ChevronRight, Download, Copy, Tv, UserX, Printer, BadgeCheck, Loader2,
 } from "lucide-react";
+import ConfirmDialog from "../components/common/ConfirmDialog";
 
 function StatCard({ label, value, accent, testid }) {
   return (
@@ -687,20 +688,29 @@ export default function Dashboard() {
                           </>
                         )}
                         {t.status !== "completed" && t.status !== "cancelled" && t.status !== "no_show" && (
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            className="rounded-full text-stone-500"
-                            onClick={() => updateStatus(t.id, "cancelled")}
-                            disabled={updatingStatus[t.id]}
-                            data-testid={`cancel-${t.token_number}`}
-                          >
-                            {updatingStatus[t.id] ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <X className="h-3.5 w-3.5" />
-                            )}
-                          </Button>
+                          <ConfirmDialog
+                            trigger={
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="rounded-full text-stone-500"
+                                disabled={updatingStatus[t.id]}
+                                data-testid={`cancel-${t.token_number}`}
+                              >
+                                {updatingStatus[t.id] ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <X className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            }
+                            title={`Cancel ticket #${t.token_number}?`}
+                            description={`This will cancel ${t.customer_name || "the ticket"} and remove them from the queue. This can't be undone.`}
+                            confirmLabel="Cancel ticket"
+                            cancelLabel="Keep ticket"
+                            onConfirm={() => updateStatus(t.id, "cancelled")}
+                            testidPrefix={`cancel-ticket-${t.token_number}`}
+                          />
                         )}
                       </div>
                     </TableCell>

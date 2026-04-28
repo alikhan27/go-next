@@ -11,10 +11,7 @@ import { Switch } from "../components/ui/switch";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "../components/ui/table";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
-} from "../components/ui/alert-dialog";
+import ConfirmDialog from "../components/common/ConfirmDialog";
 import { toast } from "sonner";
 import { Plus, Trash2, Sparkles, ArrowLeft, Pencil, Check, X } from "lucide-react";
 import { useTableControls } from "../hooks/useTableControls";
@@ -329,31 +326,18 @@ export default function Services() {
                                   <Button size="sm" variant="ghost" className="rounded-full text-stone-500 h-8" onClick={() => beginEdit(s)} data-testid={`service-edit-${s.id}`}>
                                     <Pencil className="h-3.5 w-3.5" />
                                   </Button>
-                                  <AlertDialog>
-                                    <AlertDialogTrigger asChild>
+                                  <ConfirmDialog
+                                    trigger={
                                       <Button size="sm" variant="ghost" className="rounded-full text-red-600 h-8" data-testid={`service-delete-${s.id}`}>
                                         <Trash2 className="h-3.5 w-3.5" />
                                       </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                      <AlertDialogHeader>
-                                        <AlertDialogTitle>Remove {s.name}?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                          New customers won&apos;t be able to pick this service. Tickets already in the queue keep their current service.
-                                        </AlertDialogDescription>
-                                      </AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction
-                                          className="bg-red-600 hover:bg-red-500"
-                                          onClick={() => remove(s)}
-                                          data-testid={`service-confirm-delete-${s.id}`}
-                                        >
-                                          Remove
-                                        </AlertDialogAction>
-                                      </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                  </AlertDialog>
+                                    }
+                                    title={`Remove ${s.name}?`}
+                                    description="New customers won't be able to pick this service. Tickets already in the queue keep their current service."
+                                    confirmLabel="Remove"
+                                    onConfirm={() => remove(s)}
+                                    testidPrefix={`service-confirm-delete-${s.id}`}
+                                  />
                                 </>
                               )}
                             </div>

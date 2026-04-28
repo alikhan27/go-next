@@ -37,17 +37,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "../components/ui/alert-dialog";
 import { toast } from "sonner";
 import {
   ChevronDown,
@@ -66,6 +55,7 @@ import {
 import { Palette } from "lucide-react";
 import { useTheme, THEMES } from "../context/ThemeContext";
 import BrandLogo from "../components/LogoMark";
+import ConfirmDialog from "../components/common/ConfirmDialog";
 function Stat({ label, value, accent, hint, testid }) {
   return (
     <div
@@ -553,14 +543,23 @@ export default function AdminPanel() {
                         >
                           Approve
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="rounded-full border-stone-300"
-                          onClick={() => rejectUser(u.id)}
-                        >
-                          Reject
-                        </Button>
+                        <ConfirmDialog
+                          trigger={
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="rounded-full border-stone-300"
+                              data-testid={`reject-user-${u.id}`}
+                            >
+                              Reject
+                            </Button>
+                          }
+                          title={`Reject ${u.email}?`}
+                          description="The user will not be able to sign in. You can re-approve them later from the Rejected tab."
+                          confirmLabel="Reject user"
+                          onConfirm={() => rejectUser(u.id)}
+                          testidPrefix={`reject-user-${u.id}`}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -984,8 +983,8 @@ export default function AdminPanel() {
                               <Tv className="h-4 w-4" />
                             </Button>
                           </Link>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
+                          <ConfirmDialog
+                            trigger={
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -994,30 +993,13 @@ export default function AdminPanel() {
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>
-                                  Delete {b.business_name}?
-                                </AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This permanently removes the outlet and all
-                                  its tickets. This affects the owner (
-                                  {b.owner_email}).
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => deleteOutlet(b.id)}
-                                  className="bg-red-600 hover:bg-red-500"
-                                  data-testid={`admin-confirm-delete-${b.id}`}
-                                >
-                                  Delete outlet
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                            }
+                            title={`Delete ${b.business_name}?`}
+                            description={`This permanently removes the outlet and all its tickets. This affects the owner (${b.owner_email}).`}
+                            confirmLabel="Delete outlet"
+                            onConfirm={() => deleteOutlet(b.id)}
+                            testidPrefix={`admin-confirm-delete-${b.id}`}
+                          />
                         </div>
                       </TableCell>
                     </TableRow>

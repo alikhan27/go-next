@@ -8,9 +8,24 @@ Single global Redis connection used across the application for:
 import os
 import json
 from typing import Any, Optional
+from datetime import datetime
+from bson import ObjectId
 import redis.asyncio as redis
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+
+
+def _json_default(obj):
+    """JSON serializer for objects not serializable by default (ObjectId, datetime)."""
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+
+
+def _dumps(value: Any) -> str:
+    return json.dumps(value, default=_json_default)
 
 # Create global async Redis client
 redis_client = redis.from_url(
@@ -30,7 +45,7 @@ async def set_session(session_id: str, user_data: dict, ttl: int = 604800):
     await redis_client.setex(
         f"session:{session_id}",
         ttl,
-        json.dumps(user_data)
+        _dumps(user_data)
     )
 
 
@@ -55,7 +70,7 @@ async def refresh_session(session_id: str, ttl: int = 604800):
 # Caching
 async def cache_set(key: str, value: Any, ttl: int = 1800):
     """Cache any data with TTL (30 minutes default)."""
-    await redis_client.setex(key, ttl, json.dumps(value))
+    await redis_client.setex(key, ttl, _dumps(value))
 
 
 async def cache_get(key: str) -> Optional[Any]:

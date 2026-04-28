@@ -11,10 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "../components/ui/dialog";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
-} from "../components/ui/alert-dialog";
+import ConfirmDialog from "../components/common/ConfirmDialog";
 import { toast } from "sonner";
 import { Plus, MapPin, Building2, ArrowRight, Trash2 } from "lucide-react";
 import { INDIA_STATES } from "../lib/constants"; // Import INDIA_STATES
@@ -213,31 +210,18 @@ export default function Outlets() {
                       Open <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
                     </Button>
                   </Link>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
+                  <ConfirmDialog
+                    trigger={
                       <Button variant="ghost" size="icon" className="text-stone-500 rounded-full" data-testid={`delete-outlet-${b.id}`}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Remove {b.business_name}?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This deletes the outlet and all its queue history. This can&apos;t be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => handleDelete(b.id)}
-                          className="bg-red-600 hover:bg-red-500"
-                          data-testid={`confirm-delete-outlet-${b.id}`}
-                        >
-                          Remove
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                    }
+                    title={`Remove ${b.business_name}?`}
+                    description="This deletes the outlet and all its queue history. This can't be undone."
+                    confirmLabel="Remove"
+                    onConfirm={() => handleDelete(b.id)}
+                    testidPrefix={`confirm-delete-outlet-${b.id}`}
+                  />
                 </div>
               </div>
             ))}
