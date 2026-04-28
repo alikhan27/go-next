@@ -194,11 +194,14 @@ curl -s http://localhost:8001/api/                       # → {"message":"..."}
 
 ## Demo Credentials
 
+Created automatically on first backend startup (driven by `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `backend/.env`):
+
 | Role            | Email                  | Password   |
 | --------------- | ---------------------- | ---------- |
 | Business owner  | `admin@go-next.in`     | `Demo@1234`|
 | Super admin     | `super@go-next.in`     | `Demo@1234`|
-| Demo owner      | `demo@go-next.in`      | `Demo@123` |
+
+> If you change `ADMIN_PASSWORD` later, the existing user is **not** re-hashed — the seed only runs when the user doesn't exist. Either drop the user (`db.users.deleteOne({email:"admin@go-next.in"})` in `mongosh`) or use the forgot-password flow.
 
 ## Troubleshooting
 
