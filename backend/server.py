@@ -25,6 +25,7 @@ from app.routers import public as public_router
 from app.routers import queue as queue_router
 from app.routers import services as services_router
 from app.startup import ensure_indexes, load_runtime_settings, seed_demo_data
+from app.redis_client import close_redis
 
 
 @asynccontextmanager
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     client.close()
+    await close_redis()
 
 
 app = FastAPI(title="Go-Next Salon Queue API", lifespan=lifespan)

@@ -8,6 +8,7 @@ from fastapi import HTTPException, Request, Response
 
 from .config import ACCESS_TOKEN_TTL_DAYS, JWT_ALGORITHM
 from .db import db
+from .redis_client import get_session, refresh_session
 
 
 def jwt_secret() -> str:
@@ -54,6 +55,7 @@ def clear_auth_cookie(response: Response) -> None:
 
 
 async def get_current_user(request: Request) -> dict:
+    """Get current user from session (Redis) - NO MongoDB hit!"""
     token = request.cookies.get("access_token")
     if not token:
         auth_header = request.headers.get("Authorization", "")
@@ -61,6 +63,7 @@ async def get_current_user(request: Request) -> dict:
             token = auth_header[7:]
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    
     try:
         payload = jwt.decode(token, jwt_secret(), algorithms=[JWT_ALGORITHM])
         if payload.get("type") != "access":
@@ -69,11 +72,31 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
-    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    
+    user_id = payload["sub"]
+    
+    # OPTIMIZATION: Check Redis session first (no DB hit!)
+    session_data = await get_session(user_id)
+    if session_data:
+        # Refresh session TTL on access
+        await refresh_session(user_id)
+        return session_data
+    
+    # Fallback: Fetch from DB if session not in Redis (rare case)
+    user = await db.users.find_one(
+        {"id": user_id},
+        {"_id": 0, "password_hash": 0}
+    )
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    
     from .services import sync_user_plan
     user = await sync_user_plan(user)
+    
+    # Store in Redis for future requests
+    from .redis_client import set_session
+    await set_session(user_id, user)
+    
     return user
 
 

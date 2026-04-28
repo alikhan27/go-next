@@ -28,13 +28,22 @@ from ..security import (
     verify_password,
 )
 from ..services import (
-    clear_attempts,
     create_business_doc,
-    enforce_lockout,
     list_user_businesses,
     public_user,
-    record_failed_attempt,
     sync_user_plan,
+)
+from ..redis_client import (
+    set_session,
+    delete_session,
+    cache_set,
+    cache_get,
+    cache_delete_pattern,
+    record_failed_login,
+    get_failed_login_count,
+    clear_failed_logins,
+    set_account_lockout,
+    is_account_locked,
 )
 
 router = APIRouter(prefix="/auth")
@@ -83,19 +92,32 @@ async def register(body: RegisterRequest, response: Response):
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, response: Response):
     email = body.email.lower().strip()
-    # Lock the account regardless of source IP — K8s ingress rotates
-    # across proxy IPs so keying on client.host under-counts attempts.
     identifier = f"email:{email}"
 
-    await enforce_lockout(identifier)
+    # Check if account is locked (Redis)
+    if await is_account_locked(identifier):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed attempts. Account locked for {ACCOUNT_LOCK_TTL_MINUTES} minutes."
+        )
 
     # OPTIMIZATION: Use projection to fetch only necessary fields
     user = await db.users.find_one(
         {"email": email},
-        {"email": 1, "password_hash": 1, "id": 1, "is_locked": 1, "is_approved": 1, "role": 1, "plan": 1, "plan_started_at": 1, "plan_expires_at": 1, "pending_plan": 1}
+        {"email": 1, "password_hash": 1, "id": 1, "is_locked": 1, "is_approved": 1, 
+         "role": 1, "plan": 1, "plan_started_at": 1, "plan_expires_at": 1, "pending_plan": 1, "name": 1}
     )
+    
     if not user or not verify_password(body.password, user["password_hash"]):
-        await record_failed_attempt(identifier)
+        # Record failed attempt in Redis
+        count = await record_failed_login(identifier)
+        if count >= 5:
+            # Lock account after 5 failed attempts
+            await set_account_lockout(identifier, ACCOUNT_LOCK_TTL_MINUTES * 60)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many failed attempts. Account locked for {ACCOUNT_LOCK_TTL_MINUTES} minutes."
+            )
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if user.get("is_locked"):
@@ -110,14 +132,24 @@ async def login(body: LoginRequest, request: Request, response: Response):
             detail="Your account is pending approval. You will be notified once approved.",
         )
 
-    await clear_attempts(identifier)
+    # Clear failed attempts on successful login
+    await clear_failed_logins(identifier)
 
     user = await sync_user_plan(user)
     token = create_access_token(user["id"], email)
     set_auth_cookie(response, token)
     
-    # OPTIMIZATION: Fetch businesses asynchronously (still needed for response, but could be cached)
-    businesses = await list_user_businesses(user["id"])
+    # Store session in Redis (7 days TTL)
+    await set_session(user["id"], user)
+    
+    # Check cache for businesses first
+    cache_key = f"businesses:{user['id']}"
+    businesses = await cache_get(cache_key)
+    if businesses is None:
+        businesses = await list_user_businesses(user["id"])
+        # Cache for 30 minutes
+        await cache_set(cache_key, businesses, ttl=1800)
+    
     return {
         "user": public_user(user),
         "businesses": businesses,
@@ -125,7 +157,10 @@ async def login(body: LoginRequest, request: Request, response: Response):
 
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(response: Response, user: dict = Depends(get_current_user)):
+    # Delete session from Redis
+    await delete_session(user["id"])
+    # Clear cookie
     clear_auth_cookie(response)
     return {"ok": True}
 
@@ -198,8 +233,8 @@ async def reset_password(body: ResetPasswordRequest, request: Request):
         {"token": body.token},
         {"$set": {"used_at": datetime.now(timezone.utc)}},
     )
-    # Unlock any login attempts for this email
-    await clear_attempts(f"email:{user['email']}")
+    # Clear failed login attempts and unlock account (Redis)
+    await clear_failed_logins(f"email:{user['email']}")
 
     # Issue a follow-up "lock my account" token for the security-alert flow
     now = datetime.now(timezone.utc)
