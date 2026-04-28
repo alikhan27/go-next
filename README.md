@@ -44,10 +44,17 @@ Go-Next replaces paper notebooks and chaotic WhatsApp groups at the front desk w
 
 On macOS:
 ```bash
+brew tap mongodb/brew                                  # MongoDB lives in its own tap
 brew install mongodb-community redis
 brew services start mongodb-community
 brew services start redis
-corepack enable                      # ships with Node 18+, exposes yarn
+corepack enable                                        # ships with Node 18+, exposes yarn
+```
+
+Sanity-check both are listening:
+```bash
+mongosh --eval "db.runCommand({ ping: 1 })"            # → { ok: 1 }
+redis-cli ping                                         # → PONG
 ```
 
 ### 1. Clone
