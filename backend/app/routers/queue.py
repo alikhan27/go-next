@@ -62,6 +62,52 @@ async def list_queue(
     return [public_ticket(t) for t in tickets]
 
 
+async def get_queue_stats_internal(business_id: str):
+    start, end = utc_day_bounds()
+    today_query = {"$gte": start.isoformat(), "$lt": end.isoformat()}
+    waiting = await db.queue.count_documents({
+        "business_id": business_id,
+        "status": "waiting",
+        "created_at": today_query
+    })
+    serving = await db.queue.count_documents({
+        "business_id": business_id,
+        "status": "serving"
+    })
+    today_str = start.date().isoformat()
+    completed_today = await db.queue.count_documents(
+        {
+            "business_id": business_id,
+            "status": "completed",
+            "finished_at": {"$regex": f"^{today_str}"},
+        }
+    )
+    no_show_today = await db.queue.count_documents(
+        {
+            "business_id": business_id,
+            "status": {"$in": ["cancelled", "no_show"]},
+            "finished_at": {"$regex": f"^{today_str}"},
+        }
+    )
+    revenue_pipeline = [
+        {"$match": {
+            "business_id": business_id,
+            "paid": True,
+            "finished_at": {"$regex": f"^{today_str}"},
+        }},
+        {"$group": {"_id": None, "total": {"$sum": {"$ifNull": ["$service_price", 0]}}}},
+    ]
+    rev_rows = await db.queue.aggregate(revenue_pipeline).to_list(1)
+    revenue_today = float(rev_rows[0]["total"]) if rev_rows else 0.0
+    return {
+        "waiting": waiting,
+        "serving": serving,
+        "completed_today": completed_today,
+        "no_show_today": no_show_today,
+        "revenue_today": revenue_today,
+    }
+
+
 @router.get("/queue/events")
 async def queue_events(business_id: str, user: dict = Depends(get_current_user)):
     await owned_business_or_404(user["id"], business_id)
@@ -82,7 +128,13 @@ async def queue_events(business_id: str, user: dict = Depends(get_current_user))
                 .sort([("created_at", 1), ("token_number", 1)])
                 .to_list(1000)
             )
-            payload = json.dumps([public_ticket(t) for t in tickets])
+            
+            stats = await get_queue_stats_internal(business_id)
+            
+            payload = json.dumps({
+                "tickets": [public_ticket(t) for t in tickets],
+                "stats": stats
+            })
             yield f"data: {payload}\n\n"
             await asyncio.sleep(3)
 
@@ -146,7 +198,11 @@ async def update_ticket_status(
     if body.status in ("completed", "cancelled", "no_show"):
         updates["finished_at"] = now_iso
     if body.status == "serving":
-        updated = await assign_waiting_ticket_to_chair(business, ticket_id=ticket_id)
+        updated = await assign_waiting_ticket_to_chair(
+            business, 
+            ticket_id=ticket_id, 
+            chair_number=body.chair_number
+        )
         return public_ticket(updated)
     await db.queue.update_one({"id": ticket_id}, {"$set": updates})
     updated = await db.queue.find_one({"id": ticket_id}, {"_id": 0})
@@ -276,58 +332,25 @@ async def recent_completed(
 
 
 @router.post("/queue/call-next")
-async def call_next(business_id: str, user: dict = Depends(get_current_user)):
+async def call_next(
+    business_id: str, 
+    body: Optional[UpdateStatusRequest] = None,
+    user: dict = Depends(get_current_user)
+):
     business = await owned_business_or_404(user["id"], business_id)
-    updated = await assign_waiting_ticket_to_chair(business, prefer_next=True)
+    chair_number = body.chair_number if body else None
+    updated = await assign_waiting_ticket_to_chair(
+        business, 
+        prefer_next=True, 
+        chair_number=chair_number
+    )
     return public_ticket(updated)
 
 
 @router.get("/stats")
 async def queue_stats(business_id: str, user: dict = Depends(get_current_user)):
     await owned_business_or_404(user["id"], business_id)
-    start, end = utc_day_bounds()
-    today_query = {"$gte": start.isoformat(), "$lt": end.isoformat()}
-    waiting = await db.queue.count_documents({
-        "business_id": business_id,
-        "status": "waiting",
-        "created_at": today_query
-    })
-    serving = await db.queue.count_documents({
-        "business_id": business_id,
-        "status": "serving"
-    })
-    today_str = start.date().isoformat()
-    completed_today = await db.queue.count_documents(
-        {
-            "business_id": business_id,
-            "status": "completed",
-            "finished_at": {"$regex": f"^{today_str}"},
-        }
-    )
-    no_show_today = await db.queue.count_documents(
-        {
-            "business_id": business_id,
-            "status": {"$in": ["cancelled", "no_show"]},
-            "finished_at": {"$regex": f"^{today_str}"},
-        }
-    )
-    revenue_pipeline = [
-        {"$match": {
-            "business_id": business_id,
-            "paid": True,
-            "finished_at": {"$regex": f"^{today_str}"},
-        }},
-        {"$group": {"_id": None, "total": {"$sum": {"$ifNull": ["$service_price", 0]}}}},
-    ]
-    rev_rows = await db.queue.aggregate(revenue_pipeline).to_list(1)
-    revenue_today = float(rev_rows[0]["total"]) if rev_rows else 0.0
-    return {
-        "waiting": waiting,
-        "serving": serving,
-        "completed_today": completed_today,
-        "no_show_today": no_show_today,
-        "revenue_today": revenue_today,
-    }
+    return await get_queue_stats_internal(business_id)
 
 
 @router.get("/analytics")

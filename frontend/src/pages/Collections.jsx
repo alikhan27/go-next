@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState, Fragment } from "react";
 import { useParams, Navigate } from "react-router-dom";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { collectionsService } from "../services/collectionsService";
 import { businessService } from "../services/businessService";
+import { formatAppDate } from "../utils/formatters";
+import FormattedDate from "../components/common/FormattedDate";
 import { useAuth } from "../context/AuthContext";
 import { usePlans } from "../context/PlanContext";
 import DashboardHeader from "../components/DashboardHeader";
@@ -29,12 +30,6 @@ function StatCard({ label, value, hint, accent, testid }) {
       {hint && <p className="mt-1 text-xs text-stone-500">{hint}</p>}
     </div>
   );
-}
-
-function statusBadge(paid) {
-  return paid
-    ? "bg-success/15 text-success border-success/40"
-    : "bg-primary/20 text-primary border-primary/50";
 }
 
 function PaymentMethodCards({ value, onChange, testidPrefix = "payment-method" }) {
@@ -183,13 +178,6 @@ export default function Collections() {
     amount: 0, paid_amount: 0, unpaid_amount: 0, ticket_count: 0, paid_count: 0, unpaid_count: 0,
   };
   const allRows = useMemo(() => data?.rows || [], [data]);
-  const series = useMemo(() => 
-    (data?.series || []).map((item) => ({
-      ...item,
-      shortDate: item.date.slice(5),
-    })),
-    [data]
-  );
 
   // Filter rows based on search query
   const filteredRows = useMemo(() => {
@@ -218,6 +206,22 @@ export default function Collections() {
     [filteredRows, startIndex, endIndex]
   );
 
+  // Group paginated rows by date for the grouped view
+  const groupedPaginatedRows = useMemo(() => {
+    const groups = [];
+    paginatedRows.forEach((row) => {
+      const date = row.finished_date;
+      let group = groups.find((g) => g.date === date);
+      if (!group) {
+        group = { date, rows: [], total: 0 };
+        groups.push(group);
+      }
+      group.rows.push(row);
+      group.total += Number(row.service_price || 0);
+    });
+    return groups;
+  }, [paginatedRows]);
+
   // Reset to page 1 when search changes
   useEffect(() => {
     setCurrentPage(1);
@@ -226,7 +230,7 @@ export default function Collections() {
   if (auth === null) return null;
   if (!business) {
     if (businesses.length === 0) return <Navigate to="/dashboard/outlets" replace />;
-    return <Navigate to={`/dashboard/${businesses[0].id}/collections`} replace />;
+    return <Navigate to={`/dashboard/${businessId}/collections`} replace />;
   }
 
   return (
@@ -311,23 +315,23 @@ export default function Collections() {
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
-            label="Collected"
+            label="Total Sales"
             value={`₹${Number(totals.amount || 0).toLocaleString("en-IN")}`}
             hint={`${totals.ticket_count} completed tickets`}
             accent="text-primary"
             testid="collections-total"
           />
           <StatCard
-            label="Paid"
+            label="Collected"
             value={`₹${Number(totals.paid_amount || 0).toLocaleString("en-IN")}`}
-            hint={`${totals.paid_count} tickets`}
+            hint={`${totals.paid_count} tickets paid`}
             accent="text-success"
             testid="collections-paid"
           />
           <StatCard
             label="Pending"
             value={`₹${Number(totals.unpaid_amount || 0).toLocaleString("en-IN")}`}
-            hint={`${totals.unpaid_count} tickets`}
+            hint={`${totals.unpaid_count} tickets unpaid`}
             testid="collections-unpaid"
           />
           <StatCard
@@ -336,32 +340,6 @@ export default function Collections() {
             hint={`across ${days === 1 ? "today" : `${days} days`}`}
             testid="collections-average"
           />
-        </div>
-
-        <div className="mt-8 rounded-2xl border border-stone-200 bg-white p-5" data-testid="collections-series">
-          <div className="flex items-end justify-between">
-            <h3 className="font-serif-display text-xl">Daily collection</h3>
-            <p className="text-[10px] uppercase tracking-[0.22em] text-stone-500">completed tickets only</p>
-          </div>
-          <div className="mt-4 h-[280px]">
-            {loading ? (
-              <div className="h-full flex items-center justify-center text-stone-500">Loading…</div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={series} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="shortDate" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
-                  <Tooltip
-                    formatter={(value) => [`₹${Number(value).toLocaleString("en-IN")}`, "Collection"]}
-                    contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", fontSize: 12 }}
-                    cursor={{ fill: "hsl(var(--secondary))" }}
-                  />
-                  <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
         </div>
 
         {/* Search Bar */}
@@ -397,7 +375,6 @@ export default function Collections() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="pl-5">Customer</TableHead>
-                <TableHead>Date</TableHead>
                 <TableHead>Services</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Method</TableHead>
@@ -405,84 +382,95 @@ export default function Collections() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedRows.length === 0 ? (
+              {groupedPaginatedRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-12 text-center text-stone-500">
+                  <TableCell colSpan={5} className="py-12 text-center text-stone-500">
                     {searchQuery ? "No tickets match your search." : "No completed tickets match these filters yet."}
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedRows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="pl-5">
-                      <div>
-                        <p className="font-medium text-stone-900">{row.customer_name}</p>
-                        <p className="text-xs text-stone-500">#{String(row.token_number).padStart(3, "0")}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-stone-600">{row.finished_date}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(row.service_names?.length ? row.service_names : row.service_name ? [row.service_name] : ["No service logged"]).map((name, index) => (
-                          <span key={`${row.id}-svc-${index}`} className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs text-stone-700">
-                            {name}
-                          </span>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-stone-900">
-                          ₹{Number(row.service_price || 0).toLocaleString("en-IN")}
-                        </span>
-                        {!row.paid && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 w-7 p-0 hover:bg-stone-100"
-                            onClick={() => openAmountDialog(row)}
-                            data-testid={`edit-amount-${row.token_number}`}
-                            title="Edit amount"
-                          >
-                            <Edit2 className="h-3.5 w-3.5 text-stone-500" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-stone-600">
-                      {row.payment_method === "online"
-                        ? "Online"
-                        : row.payment_method === "cash"
-                          ? "Cash"
-                          : "—"}
-                    </TableCell>
-                    <TableCell className="pr-5 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {row.service_price > 0 ? (
-                          row.paid ? (
-                            <Badge className="rounded-full bg-success text-white px-3 py-1.5 font-normal">
-                              <BadgeCheck className="h-3.5 w-3.5 mr-1 inline" />
-                              Paid
-                            </Badge>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="rounded-full border-primary/40 text-primary hover:bg-secondary"
-                              onClick={() => openPaymentDialog(row)}
-                              data-testid={`mark-paid-${row.token_number}`}
-                            >
-                              Mark as paid
-                            </Button>
-                          )
-                        ) : (
-                          <Badge className="rounded-full border border-stone-200 bg-stone-50 text-stone-400 text-xs px-3 py-1">
-                            No amount
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                groupedPaginatedRows.map((group) => (
+                  <Fragment key={group.date}>
+                    <TableRow className="bg-stone-50/50 hover:bg-stone-50/50">
+                      <TableCell colSpan={5} className="py-2 pl-5 font-semibold text-stone-900 border-l-4 border-primary">
+                        <div className="flex items-center justify-between">
+                          <FormattedDate date={group.date} />
+                          <span className="text-primary pr-5 text-sm font-bold">₹{group.total.toLocaleString("en-IN")} total</span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    {group.rows.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="pl-5">
+                          <div>
+                            <p className="font-medium text-stone-900">{row.customer_name}</p>
+                            <p className="text-xs text-stone-500">#{String(row.token_number).padStart(3, "0")}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(row.service_names?.length ? row.service_names : row.service_name ? [row.service_name] : ["No service logged"]).map((name, index) => (
+                              <span key={`${row.id}-svc-${index}`} className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs text-stone-700">
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-stone-900">
+                              ₹{Number(row.service_price || 0).toLocaleString("en-IN")}
+                            </span>
+                            {!row.paid && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0 hover:bg-stone-100"
+                                onClick={() => openAmountDialog(row)}
+                                data-testid={`edit-amount-${row.token_number}`}
+                                title="Edit amount"
+                              >
+                                <Edit2 className="h-3.5 w-3.5 text-stone-500" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-stone-600">
+                          {row.payment_method === "online"
+                            ? "Online"
+                            : row.payment_method === "cash"
+                              ? "Cash"
+                              : "—"}
+                        </TableCell>
+                        <TableCell className="pr-5 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {row.service_price > 0 ? (
+                              row.paid ? (
+                                <Badge className="rounded-full bg-success text-white px-3 py-1.5 font-normal">
+                                  <BadgeCheck className="h-3.5 w-3.5 mr-1 inline" />
+                                  Paid
+                                </Badge>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-full border-primary/40 text-primary hover:bg-secondary"
+                                  onClick={() => openPaymentDialog(row)}
+                                  data-testid={`mark-paid-${row.token_number}`}
+                                >
+                                  Mark as paid
+                                </Button>
+                              )
+                            ) : (
+                              <Badge className="rounded-full border border-stone-200 bg-stone-50 text-stone-400 text-xs px-3 py-1">
+                                No amount
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </Fragment>
                 ))
               )}
             </TableBody>

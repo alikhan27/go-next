@@ -18,11 +18,51 @@ export function formatTokenNumber(tokenNumber) {
 }
 
 /**
- * Format date
+ * Format date into parts: { date: "01/Jan/2026", weekday: "Monday" }
+ */
+export function formatAppDate(dateString) {
+  if (!dateString) return { date: '', weekday: '' };
+  try {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return { date: dateString, weekday: '' };
+    
+    const day = String(d.getDate()).padStart(2, '0');
+    // Get short month like "Jan", "Feb"
+    const month = d.toLocaleString('en-IN', { month: 'short' });
+    const year = d.getFullYear();
+    const weekday = d.toLocaleString('en-IN', { weekday: 'long' });
+    
+    return {
+      date: `${day}/${month}/${year}`,
+      weekday: weekday
+    };
+  } catch (e) {
+    return { date: dateString, weekday: '' };
+  }
+}
+
+/**
+ * Format date for charts: "28-Apr" (no year)
+ */
+export function formatChartDate(dateString) {
+  if (!dateString) return '';
+  try {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return dateString;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = d.toLocaleString('en-IN', { month: 'short' });
+    return `${day}-${month}`;
+  } catch (e) {
+    return dateString;
+  }
+}
+
+/**
+ * Format date string (default simple version)
  */
 export function formatDate(dateString) {
-  if (!dateString) return '';
-  return new Date(dateString).toLocaleDateString('en-IN');
+  const { date } = formatAppDate(dateString);
+  return date;
 }
 
 /**

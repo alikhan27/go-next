@@ -9,6 +9,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
+import FormattedDate from "../components/common/FormattedDate";
 import {
   Tabs,
   TabsContent,
@@ -62,6 +63,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "../components/ui/dialog";
+
 function Stat({ label, value, accent, hint, testid }) {
   return (
     <div
@@ -142,10 +144,10 @@ function useServerTable(
 
 export default function AdminPanel() {
   const { auth, logout } = useAuth();
-  const { catalog, setCatalog } = usePlans();
+  const { catalog, planLimits } = usePlans();
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true); // Re-added this line
+  const [loading, setLoading] = useState(true);
 
   // Use server-side state
   const usersTable = useServerTable("/admin/users");
@@ -184,8 +186,8 @@ export default function AdminPanel() {
       setSavingTheme(true);
       try {
         const { data } = await api.patch("/admin/theme", { theme_id: themeId });
-        const themeObj = THEMES.find((t) => t.id === data.theme_id);
         updateTheme(data.theme_id);
+        const themeObj = THEMES.find((t) => t.id === data.theme_id);
         toast.success(`Theme updated to ${themeObj?.name || data.theme_id}`);
       } catch (err) {
         toast.error(
@@ -204,7 +206,7 @@ export default function AdminPanel() {
   };
 
   const loadData = useCallback(async () => {
-    setLoading(true); // Keep local loading state for stats and plans, etc.
+    setLoading(true);
     try {
       const [s, l, p] = await Promise.all([
         api.get("/admin/stats"),
@@ -219,7 +221,6 @@ export default function AdminPanel() {
           features_text: (plan.features || []).join("\n"),
         })),
       );
-      // Removed calls to pendingUsersTable.refresh() and rejectedUsersTable.refresh()
     } catch (err) {
       toast.error(
         formatApiErrorDetail(err.response?.data?.detail) || err.message,
@@ -227,7 +228,7 @@ export default function AdminPanel() {
     } finally {
       setLoading(false);
     }
-  }, []); // Removed pendingUsersTable, rejectedUsersTable from dependencies
+  }, []);
 
   const approveUser = useCallback(
     async (userId) => {
@@ -236,7 +237,7 @@ export default function AdminPanel() {
         toast.success("User approved!");
         pendingUsersTable.refresh();
         usersTable.refresh();
-        loadData(); // Refresh stats, lockouts etc.
+        loadData();
       } catch (err) {
         toast.error(
           formatApiErrorDetail(err.response?.data?.detail) || err.message,
@@ -253,7 +254,7 @@ export default function AdminPanel() {
         toast.success("User rejected!");
         pendingUsersTable.refresh();
         rejectedUsersTable.refresh();
-        loadData(); // Refresh stats, lockouts etc.
+        loadData();
       } catch (err) {
         toast.error(
           formatApiErrorDetail(err.response?.data?.detail) || err.message,
@@ -315,6 +316,38 @@ export default function AdminPanel() {
       try {
         await api.patch(`/admin/users/${userId}`, { plan });
         toast.success(`Plan updated to ${planLabelText(plan)}`);
+        usersTable.refresh();
+        loadData();
+      } catch (err) {
+        toast.error(
+          formatApiErrorDetail(err.response?.data?.detail) || err.message,
+        );
+      }
+    },
+    [usersTable, loadData],
+  );
+
+  const setLocked = useCallback(
+    async (userId, isLocked) => {
+      try {
+        await api.patch(`/admin/users/${userId}`, { is_locked: isLocked });
+        toast.success(isLocked ? "Account frozen" : "Account restored");
+        usersTable.refresh();
+        loadData();
+      } catch (err) {
+        toast.error(
+          formatApiErrorDetail(err.response?.data?.detail) || err.message,
+        );
+      }
+    },
+    [usersTable, loadData],
+  );
+
+  const clearLockout = useCallback(
+    async (email) => {
+      try {
+        await api.delete(`/admin/security/lockouts/${encodeURIComponent(email)}`);
+        toast.success("Lockout cleared");
         loadData();
       } catch (err) {
         toast.error(
@@ -324,6 +357,32 @@ export default function AdminPanel() {
     },
     [loadData],
   );
+
+  const updatePlanDraft = (planId, key, value) => {
+    setPlans((prev) =>
+      prev.map((p) => (p.id === planId ? { ...p, [key]: value } : p)),
+    );
+  };
+
+  const savePlan = async (planId) => {
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) return;
+    setSavingPlans((prev) => ({ ...prev, [planId]: true }));
+    try {
+      const payload = {
+        ...plan,
+        features: plan.features_text.split("\n").filter((f) => f.trim()),
+      };
+      await api.put(`/admin/plans/${planId}`, payload);
+      toast.success("Plan updated");
+    } catch (err) {
+      toast.error(
+        formatApiErrorDetail(err.response?.data?.detail) || err.message,
+      );
+    } finally {
+      setSavingPlans((prev) => ({ ...prev, [planId]: false }));
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -341,7 +400,6 @@ export default function AdminPanel() {
           borderColor: c["--app-border"],
         }}
       >
-        {" "}
         <div className="w-full px-5 py-3 flex flex-wrap items-center gap-3">
           <Link to="/" className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center">
@@ -399,7 +457,7 @@ export default function AdminPanel() {
           className="text-[11px] uppercase tracking-[0.26em]"
           style={{ color: c["--app-accent-text"] }}
         >
-          Platformpcontrol
+          Platform Control
         </p>
         <h1 className="font-serif-display text-4xl sm:text-5xl mt-2 leading-none">
           Super admin
@@ -580,9 +638,11 @@ export default function AdminPanel() {
                         </span>
                       </TableCell>
                       <TableCell className="text-stone-500">
-                        {u.created_at
-                          ? new Date(u.created_at).toLocaleDateString()
-                          : "—"}
+                        {u.created_at ? (
+                          <FormattedDate date={u.created_at} />
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <ConfirmDialog
@@ -717,14 +777,18 @@ export default function AdminPanel() {
                         </span>
                       </TableCell>
                       <TableCell className="text-stone-500">
-                        {u.created_at
-                          ? new Date(u.created_at).toLocaleDateString()
-                          : "—"}
+                        {u.created_at ? (
+                          <FormattedDate date={u.created_at} />
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                       <TableCell className="text-stone-500">
-                        {u.rejected_at
-                          ? new Date(u.rejected_at).toLocaleDateString()
-                          : "—"}
+                        {u.rejected_at ? (
+                          <FormattedDate date={u.rejected_at} />
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                       <TableCell className="text-center">
                         {u.outlet_count}
@@ -866,9 +930,7 @@ export default function AdminPanel() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-stone-500 text-xs">
-                          {u.created_at
-                            ? new Date(u.created_at).toLocaleDateString()
-                            : "—"}
+                          <FormattedDate date={u.created_at} />
                         </TableCell>
                         <TableCell
                           className="text-right pr-5"
@@ -965,9 +1027,20 @@ export default function AdminPanel() {
                       >
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <p className="font-semibold text-stone-900">
-                              {business.business_name}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-stone-900">
+                                {business.business_name}
+                              </p>
+                              <Badge
+                                className={`rounded-full border px-2 py-0 font-normal text-[10px] ${
+                                  business.is_online
+                                    ? "bg-success/10 text-success border-success/40"
+                                    : "bg-stone-100 text-stone-600 border-stone-200"
+                                }`}
+                              >
+                                {business.is_online ? "Serving" : "Paused"}
+                              </Badge>
+                            </div>
                             <p className="text-sm text-stone-500">
                               {[business.city, business.state, business.pincode]
                                 .filter(Boolean)

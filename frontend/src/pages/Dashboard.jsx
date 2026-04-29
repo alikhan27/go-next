@@ -88,50 +88,140 @@ export default function Dashboard() {
   const [addingWalkIn, setAddingWalkIn] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState({});
   const [callingNext, setCallingNext] = useState(false);
+  
+  // Chair Selection
+  const [chairSelection, setChairSelection] = useState(null); // { type: 'manual'|'callNext', ticketId?: string }
+  const [selectedChair, setSelectedChair] = useState(null);
+
+  useEffect(() => {
+    if (chairSelection && availableChairs.length > 0 && !selectedChair) {
+      setSelectedChair(availableChairs[0]);
+    }
+  }, [chairSelection, availableChairs, selectedChair]);
 
   useEffect(() => {
     if (business) setIsOnline(!!business.is_online);
   }, [business]);
 
-  useEffect(() => {
-    if (!business) return;
-
-    const eventSource = new EventSource(`${API}/business/${business.id}/queue/events`, { withCredentials: true });
-    
-    eventSource.onmessage = (event) => {
-      try {
-        if (!event.data) return;
-        const tickets = JSON.parse(event.data);
-        setTickets(tickets);
-      } catch (e) {
-        console.error("SSE JSON Parse Error:", e, "Data:", event.data);
-      }
-    };
-
-    eventSource.onerror = (err) => {
-      console.error("SSE Error:", err);
-      eventSource.close();
-    };
-
-    return () => eventSource.close();
-  }, [business]);
-
   const load = useCallback(async () => {
     if (!business) return;
     try {
-      const [statsData, servicesData] = await Promise.all([
+      const [statsData, servicesData, ticketsData] = await Promise.all([
         queueService.getStats(business.id),
         businessService.getServices(business.id).catch(() => []),
+        queueService.getTickets(business.id),
       ]);
       setStats(statsData);
       setServices((servicesData || []).filter((item) => item.is_active !== false));
+      setTickets(ticketsData);
     } catch {
       /* ignore */
     }
   }, [business]);
 
+  useEffect(() => {
+    load();
+  }, [load]);
+
   const waiting = useMemo(() => tickets.filter((t) => t.status === "waiting"), [tickets]);
   const serving = useMemo(() => tickets.filter((t) => t.status === "serving"), [tickets]);
+
+  const availableChairs = useMemo(() => {
+    if (!business) return [];
+    const total = business.total_chairs || 1;
+    const taken = serving.map(t => t.chair_number).filter(Boolean);
+    const chairs = [];
+    for (let i = 1; i <= total; i++) {
+      if (!taken.includes(i)) {
+        chairs.push(i);
+      }
+    }
+    return chairs;
+  }, [business, serving]);
+
+  const handleChairConfirm = async () => {
+    if (!selectedChair) {
+      toast.error("Please select a chair");
+      return;
+    }
+
+    const { type, ticketId } = chairSelection;
+    setChairSelection(null);
+    setSelectedChair(null);
+
+    if (type === 'callNext') {
+      setCallingNext(true);
+      try {
+        await queueService.callNext(business.id, selectedChair);
+        await load();
+        toast.success(`Next guest is now serving on ${business.station_label || "Station"} ${selectedChair}`);
+      } catch (err) {
+        toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+      } finally {
+        setCallingNext(false);
+      }
+    } else if (type === 'manual') {
+      setUpdatingStatus(prev => ({ ...prev, [ticketId]: true }));
+      try {
+        await queueService.updateStatus(business.id, ticketId, "serving", selectedChair);
+        await load();
+        toast.success(`Guest is now serving on ${business.station_label || "Station"} ${selectedChair}`);
+      } catch (err) {
+        toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+      } finally {
+        setUpdatingStatus(prev => ({ ...prev, [ticketId]: false }));
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!business) return;
+
+    let eventSource;
+    let retryTimeout;
+    let retryCount = 0;
+
+    const connect = () => {
+      eventSource = new EventSource(`${API}/business/${business.id}/queue/events`, { withCredentials: true });
+      
+      eventSource.onmessage = (event) => {
+        try {
+          if (!event.data) return;
+          const data = JSON.parse(event.data);
+          // Handle both old format (array) and possible new format (object)
+          if (Array.isArray(data)) {
+            setTickets(data);
+          } else if (data.tickets) {
+            setTickets(data.tickets);
+            if (data.stats) setStats(data.stats);
+          }
+          retryCount = 0;
+        } catch (e) {
+          console.error("SSE JSON Parse Error:", e, "Data:", event.data);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error("SSE Error:", err);
+        eventSource.close();
+        
+        // Exponential backoff retry
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
+        retryTimeout = setTimeout(() => {
+          retryCount++;
+          connect();
+        }, delay);
+      };
+    };
+
+    connect();
+
+    return () => {
+      if (eventSource) eventSource.close();
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
+  }, [business]);
+
   const suggestedTotal = useMemo(
     () => services
       .filter((svc) => completion.service_ids.includes(svc.id))
@@ -186,6 +276,12 @@ export default function Dashboard() {
 
   const updateStatus = async (id, status) => {
     if (updatingStatus[id]) return;
+
+    if (status === "serving" && business.total_chairs > 1) {
+      setChairSelection({ type: 'manual', ticketId: id });
+      return;
+    }
+
     setUpdatingStatus(prev => ({ ...prev, [id]: true }));
     try {
       await queueService.updateStatus(business.id, id, status);
@@ -205,6 +301,12 @@ export default function Dashboard() {
 
   const callNext = async () => {
     if (callingNext) return;
+
+    if (business.total_chairs > 1) {
+      setChairSelection({ type: 'callNext' });
+      return;
+    }
+
     setCallingNext(true);
     try {
       await queueService.callNext(business.id);
@@ -350,8 +452,8 @@ export default function Dashboard() {
         </div>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Waiting" value={stats.waiting} accent="text-primary" testid="stat-waiting" />
-          <StatCard label="Serving" value={stats.serving} accent="text-success" testid="stat-serving" />
+          <StatCard label="Waiting" value={waiting.length} accent="text-primary" testid="stat-waiting" />
+          <StatCard label="Serving" value={serving.length} accent="text-success" testid="stat-serving" />
           <StatCard label="Done today" value={stats.completed_today} testid="stat-done" />
           <StatCard label="No-shows today" value={stats.no_show_today} testid="stat-noshow" />
         </div>
@@ -477,6 +579,53 @@ export default function Dashboard() {
                 </Button>
               </div>
             </div>
+
+            <Dialog
+              open={!!chairSelection}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setChairSelection(null);
+                  setSelectedChair(null);
+                }
+              }}
+            >
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="font-serif-display text-2xl">Select {business.station_label || "Station"}</DialogTitle>
+                  <DialogDescription>
+                    Which {business.station_label?.toLowerCase() || "station"} are you calling them to?
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-3 gap-3 py-4">
+                  {availableChairs.map((chair) => (
+                    <button
+                      key={chair}
+                      onClick={() => setSelectedChair(chair)}
+                      className={`flex flex-col items-center justify-center rounded-2xl border-2 py-6 transition-all ${
+                        selectedChair === chair
+                          ? "border-primary bg-secondary shadow-sm"
+                          : "border-stone-100 bg-white hover:border-stone-200"
+                      }`}
+                    >
+                      <span className="text-[10px] uppercase tracking-widest text-stone-500 mb-1">
+                        {business.station_label || "Station"}
+                      </span>
+                      <span className="font-serif-display text-3xl text-stone-900">{chair}</span>
+                    </button>
+                  ))}
+                </div>
+                <DialogFooter>
+                  <Button
+                    onClick={handleChairConfirm}
+                    disabled={!selectedChair || callingNext}
+                    className="w-full rounded-full bg-primary hover:bg-primary/90 text-white h-12 text-base"
+                    data-testid="confirm-chair-btn"
+                  >
+                    Confirm & Call
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             <Dialog
               open={completeOpen}

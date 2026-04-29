@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -11,12 +11,16 @@ import { LogoMark } from "../components/LogoMark";
 export default function JoinQueue() {
   const { businessId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [summary, setSummary] = useState(null);
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ customer_name: "", customer_phone: "", service_ids: [] });
   const [submitting, setSubmitting] = useState(false);
   const [notFound, setNotFound] = useState(false);
+
+  const queryParams = new URLSearchParams(location.search);
+  const isNewSessionRequested = queryParams.get("new") === "true";
 
   const load = useCallback(async () => {
     try {
@@ -40,29 +44,40 @@ export default function JoinQueue() {
   }, [load]);
 
   useEffect(() => {
-    const existing = localStorage.getItem(`ticket-${businessId}`);
+    // If user explicitly wants to join fresh (e.g. from a 'Join again' link)
+    if (isNewSessionRequested) {
+      localStorage.removeItem(`ticket-${businessId}`);
+      sessionStorage.removeItem(`ticket-${businessId}`);
+      return;
+    }
+
+    // Use sessionStorage for redirection to allow new tabs to book fresh
+    const existing = sessionStorage.getItem(`ticket-${businessId}`);
     if (!existing) return;
+    
     let cancelled = false;
     (async () => {
       try {
         const { data } = await api.get(`/public/ticket/${existing}`);
         const status = data?.ticket?.status;
         if (cancelled) return;
+        
+        // Only redirect if the ticket is still active
         if (status === "waiting" || status === "serving") {
           navigate(`/ticket/${existing}`, { replace: true });
         } else {
           // terminal or unknown status — stale pointer, drop it and show the form
-          localStorage.removeItem(`ticket-${businessId}`);
+          sessionStorage.removeItem(`ticket-${businessId}`);
         }
       } catch {
         // ticket no longer exists; clear and show the form
-        localStorage.removeItem(`ticket-${businessId}`);
+        sessionStorage.removeItem(`ticket-${businessId}`);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [businessId, navigate]);
+  }, [businessId, navigate, isNewSessionRequested]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -74,7 +89,11 @@ export default function JoinQueue() {
       };
       if (form.service_ids.length > 0) payload.service_ids = form.service_ids;
       const { data } = await api.post(`/public/business/${businessId}/join`, payload);
+      
+      // Store in both for persistence and session tracking
       localStorage.setItem(`ticket-${businessId}`, data.id);
+      sessionStorage.setItem(`ticket-${businessId}`, data.id);
+      
       toast.success("You're in the queue");
       navigate(`/ticket/${data.id}`);
     } catch (err) {

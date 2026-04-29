@@ -9,6 +9,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
+import FormattedDate from "../components/common/FormattedDate";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Clock } from "lucide-react";
 
@@ -53,7 +54,7 @@ export default function Settings() {
   const pendingPlan = auth?.user?.pending_plan;
   const currentPlanLabel = catalog[currentPlan]?.label || "Free";
   const expiryDate = auth?.user?.plan_expires_at
-    ? new Date(auth.user.plan_expires_at)
+    ? auth.user.plan_expires_at
     : null;
   const daysRemaining = auth?.user?.plan_days_remaining;
 
@@ -106,13 +107,20 @@ export default function Settings() {
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-stone-400">Plan</p>
               <h2 className="mt-1 font-serif-display text-2xl">{currentPlanLabel}</h2>
-              <p className="mt-1 text-sm text-stone-600">
-                {expiryDate
-                  ? `${daysRemaining ?? 0} day${daysRemaining === 1 ? "" : "s"} left · expires ${expiryDate.toLocaleDateString()}`
-                  : "Free plan does not expire."}
-              </p>
+              <div className="mt-2">
+                {expiryDate ? (
+                  <div className="flex flex-col gap-1">
+                    <p className="text-sm text-stone-600">
+                      {daysRemaining ?? 0} day{daysRemaining === 1 ? "" : "s"} left · Expires on:
+                    </p>
+                    <FormattedDate date={expiryDate} className="text-sm" />
+                  </div>
+                ) : (
+                  <p className="text-sm text-stone-600">Free plan does not expire.</p>
+                )}
+              </div>
               {pendingPlan ? (
-                <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-xs text-primary">
+                <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-xs text-primary">
                   <Clock className="h-3.5 w-3.5" />
                   Switches to {catalog[pendingPlan]?.label || pendingPlan} when this plan ends
                 </p>

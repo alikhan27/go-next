@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, API } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { CheckCircle2, XCircle, Clock, MapPin, Sparkles } from "lucide-react";
+import { LogoMark } from "../components/LogoMark";
 
 export default function TicketStatus() {
   const { ticketId } = useParams();
@@ -25,11 +26,43 @@ export default function TicketStatus() {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 4000);
+  }, [load]);
+
+  // SSE for instant updates
+  useEffect(() => {
+    if (!ticketId) return;
+
+    const eventSource = new EventSource(`${API}/public/ticket/${ticketId}/events`, { withCredentials: true });
+
+    eventSource.onmessage = (event) => {
+      try {
+        if (!event.data) return;
+        const payload = JSON.parse(event.data);
+        setData(payload);
+        setError(null);
+        setLoading(false);
+      } catch (e) {
+        console.error("SSE JSON Parse Error:", e, "Data:", event.data);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("SSE Connection Error:", err);
+      // Fallback to polling if SSE fails
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [ticketId]);
+
+  // Polling fallback (runs alongside SSE but only actually updates state if data is different)
+  useEffect(() => {
+    const id = setInterval(load, 5000);
     return () => clearInterval(id);
   }, [load]);
 
-  // When the ticket reaches a terminal state, clear the localStorage pointer
+  // When the ticket reaches a terminal state, clear the storage pointers
   // so the customer is not bounced back here from /join/:businessId.
   useEffect(() => {
     const t = data?.ticket;
@@ -37,17 +70,18 @@ export default function TicketStatus() {
     if (t.status === "completed" || t.status === "cancelled" || t.status === "no_show") {
       try {
         localStorage.removeItem(`ticket-${t.business_id}`);
+        sessionStorage.removeItem(`ticket-${t.business_id}`);
       } catch {
         /* ignore */
       }
     }
   }, [data]);
 
-  if (loading) {
+  if (loading && !data) {
     return <div className="min-h-screen flex items-center justify-center bg-background text-stone-500">Loading…</div>;
   }
 
-  if (error || !data) {
+  if (error && !data) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background px-5 text-center">
         <div className="max-w-sm">
@@ -61,7 +95,9 @@ export default function TicketStatus() {
     );
   }
 
-  const { ticket, position, estimated_wait_minutes, business } = data;
+  if (!data) return null;
+
+  const { ticket, position, estimated_wait_minutes, business, waiting_count, serving_count } = data;
 
   const Hero = () => {
     if (ticket.status === "completed") {
@@ -100,14 +136,24 @@ export default function TicketStatus() {
       return (
         <div className="text-center py-6">
           <Sparkles className="mx-auto h-10 w-10 text-primary" />
-          <p className="text-[11px] uppercase tracking-[0.26em] text-primary mt-4">It&apos;s your turn</p>
-          <h2 className="font-serif-display text-5xl mt-2">Please head to {business?.station_label || "Station"} {ticket.chair_number}</h2>
+          <div className="mt-4">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Your token</p>
+            <p className="font-serif-display text-6xl text-stone-900">#{String(ticket.token_number).padStart(3, "0")}</p>
+          </div>
+          <p className="text-[11px] uppercase tracking-[0.26em] text-primary mt-6">It&apos;s your turn</p>
+          <h2 className="font-serif-display text-4xl mt-2">Please head to {business?.station_label || "Station"} {ticket.chair_number}</h2>
         </div>
       );
     }
     return (
       <div className="text-center py-6">
-        <p className="text-[11px] uppercase tracking-[0.26em] text-primary">You&apos;re in the queue</p>
+        <div className="mb-6">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Your token</p>
+          <p className="font-serif-display text-4xl text-stone-900">#{String(ticket.token_number).padStart(3, "0")}</p>
+        </div>
+        {position !== 1 && (
+          <p className="text-[11px] uppercase tracking-[0.26em] text-primary">You&apos;re in the queue</p>
+        )}
         <p className="font-serif-display text-7xl mt-4 leading-none" data-testid="ticket-position">
           {position === 1 ? "You're next" : `#${position}`}
         </p>
@@ -121,21 +167,46 @@ export default function TicketStatus() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="warm-hero-gradient grain">
-        <div className="mx-auto max-w-md px-5 pt-10 pb-8 text-center">
-          <p className="text-[11px] uppercase tracking-[0.26em] text-primary">{business?.business_name}</p>
-          <p className="mt-1 text-xs text-stone-600">
-            Token · <span className="font-medium">#{String(ticket.token_number).padStart(3, "0")}</span>
-          </p>
+        <div className="mx-auto max-w-md px-5 pt-12 pb-10">
+          <div className="flex items-center justify-center">
+            <div className="inline-flex items-center gap-3 rounded-full border border-stone-200/80 bg-white/90 px-4 py-2.5 shadow-sm backdrop-blur-xl">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/12 text-primary ring-1 ring-primary/20">
+                <LogoMark className="h-6 w-6" />
+              </span>
+              <div className="text-left">
+                <p className="text-[10px] uppercase tracking-[0.22em] text-stone-500">Queue by</p>
+                <p className="text-sm font-semibold leading-none text-foreground">Go-Next</p>
+              </div>
+            </div>
+          </div>
+          <p className="mt-5 text-[11px] uppercase tracking-[0.26em] text-primary text-center">Ticket status</p>
+          <h1 className="font-serif-display mt-3 text-4xl sm:text-5xl leading-none text-center">{business?.business_name}</h1>
           {business?.address && (
-            <p className="mt-1 text-xs text-stone-500 inline-flex items-center gap-1.5">
-              <MapPin className="h-3 w-3" /> {business.address}{business.city ? `, ${business.city}` : ""}
+            <p className="mt-2 text-sm text-stone-600 flex items-center justify-center gap-1.5 text-center">
+              <MapPin className="h-3.5 w-3.5" /> {business.address}{business.city ? `, ${business.city}` : ""}
             </p>
           )}
+
+          <div className="mt-6 grid grid-cols-3 gap-3">
+            <div className="rounded-2xl border border-stone-200 bg-white/80 backdrop-blur-xl px-4 py-3 text-center">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Waiting</p>
+              <p className="font-serif-display text-2xl text-primary">{waiting_count ?? 0}</p>
+            </div>
+            <div className="rounded-2xl border border-stone-200 bg-white/80 backdrop-blur-xl px-4 py-3 text-center">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Serving</p>
+              <p className="font-serif-display text-2xl text-success">{serving_count ?? 0}</p>
+            </div>
+            <div className="rounded-2xl border border-stone-200 bg-white/80 backdrop-blur-xl px-4 py-3 text-center">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">Chairs</p>
+              <p className="font-serif-display text-2xl text-stone-900">{business?.total_chairs ?? 1}</p>
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="mx-auto max-w-md px-5 -mt-2 pb-16">
         <div className="rounded-3xl border border-stone-200 bg-white p-8">
+          {/* Token number is now shown only in the serving state of the Hero component */}
           <Hero />
 
           {ticket.status === "waiting" && (

@@ -80,6 +80,7 @@ PaymentMethodT = Literal["cash", "online"]
 
 class UpdateStatusRequest(BaseModel):
     status: StatusT
+    chair_number: Optional[int] = Field(default=None, ge=1, le=100)
 
 
 class MarkPaidRequest(BaseModel):

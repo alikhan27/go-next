@@ -3,6 +3,7 @@ import { useParams, Navigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { usePlans } from "../context/PlanContext";
+import { formatAppDate, formatChartDate } from "../utils/formatters";
 import DashboardHeader from "../components/DashboardHeader";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -106,10 +107,12 @@ export default function Analytics() {
   }
 
   const totals = data?.totals || { completed: 0, cancelled: 0, no_show: 0, no_show_rate_pct: 0, avg_service_minutes: 0 };
-  const series = (data?.series || []).map((s) => ({
-    ...s,
-    shortDate: s.date.slice(5), // MM-DD
-  }));
+  const series = (data?.series || []).map((s) => {
+    return {
+      ...s,
+      displayDate: formatChartDate(s.date),
+    };
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -164,7 +167,7 @@ export default function Analytics() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={series} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="shortDate" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                  <XAxis dataKey="displayDate" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
                   <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip
                     contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", fontSize: 12 }}

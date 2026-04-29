@@ -32,8 +32,10 @@ export const queueService = {
   /**
    * Update ticket status
    */
-  async updateStatus(businessId, ticketId, status) {
-    const response = await api.patch(`/business/${businessId}/queue/${ticketId}/status`, { status });
+  async updateStatus(businessId, ticketId, status, chairNumber = null) {
+    const data = { status };
+    if (chairNumber !== null) data.chair_number = chairNumber;
+    const response = await api.patch(`/business/${businessId}/queue/${ticketId}/status`, data);
     return response.data;
   },
 
@@ -48,8 +50,10 @@ export const queueService = {
   /**
    * Call next customer
    */
-  async callNext(businessId) {
-    const response = await api.post(`/business/${businessId}/queue/call-next`);
+  async callNext(businessId, chairNumber = null) {
+    const data = {};
+    if (chairNumber !== null) data.chair_number = chairNumber;
+    const response = await api.post(`/business/${businessId}/queue/call-next`, data);
     return response.data;
   },
 

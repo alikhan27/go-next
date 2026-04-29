@@ -251,11 +251,21 @@ def public_business(b: dict) -> dict:
 
 
 def public_ticket(t: dict) -> dict:
+    phone = t.get("customer_phone", "")
+    masked_phone = ""
+    if phone:
+        # Show last 4 digits, mask the rest
+        clean_phone = "".join(filter(str.isdigit, phone))
+        if len(clean_phone) > 4:
+            masked_phone = "*" * (len(clean_phone) - 4) + clean_phone[-4:]
+        else:
+            masked_phone = phone # Too short to mask meaningfully
+
     return {
         "id": t["id"],
         "business_id": t["business_id"],
         "customer_name": t["customer_name"],
-        "customer_phone": t.get("customer_phone", ""),
+        "customer_phone": masked_phone,
         "token_number": t["token_number"],
         "status": t["status"],
         "booking_type": t.get("booking_type", "remote"),
@@ -388,6 +398,7 @@ async def assign_waiting_ticket_to_chair(
     business: dict,
     ticket_id: Optional[str] = None,
     prefer_next: bool = False,
+    chair_number: Optional[int] = None,
 ) -> dict:
     """Promote a waiting ticket to serving while keeping chair assignment unique.
 
@@ -408,9 +419,20 @@ async def assign_waiting_ticket_to_chair(
             {"business_id": business_id, "status": "serving"},
             {"_id": 0, "chair_number": 1},
         ).to_list(1000)
-        chair = _free_chair_number(business, serving_tickets)
-        if chair is None:
-            raise HTTPException(status_code=400, detail="All stations are currently busy")
+        
+        if chair_number is not None:
+            # Verify the requested chair is within bounds and not taken
+            total_chairs = max(int(business.get("total_chairs", 1)), 1)
+            if not (1 <= chair_number <= total_chairs):
+                raise HTTPException(status_code=400, detail=f"Invalid {business.get('station_label', 'Station')} number")
+            taken = {s.get("chair_number") for s in serving_tickets if s.get("chair_number")}
+            if chair_number in taken:
+                raise HTTPException(status_code=400, detail=f"{business.get('station_label', 'Station')} {chair_number} is already busy")
+            chair = chair_number
+        else:
+            chair = _free_chair_number(business, serving_tickets)
+            if chair is None:
+                raise HTTPException(status_code=400, detail="All stations are currently busy")
 
         if ticket_id:
             target = await db.queue.find_one(
@@ -447,6 +469,8 @@ async def assign_waiting_ticket_to_chair(
                 return_document=ReturnDocument.AFTER,
             )
         except DuplicateKeyError:
+            if chair_number is not None:
+                raise HTTPException(status_code=409, detail=f"{business.get('station_label', 'Station')} {chair_number} was just taken")
             continue
         if updated:
             return updated
