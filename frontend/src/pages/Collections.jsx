@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState, Fragment } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  Fragment,
+} from "react";
 import { useParams, Navigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { collectionsService } from "../services/collectionsService";
@@ -12,27 +18,56 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
 } from "../components/ui/dialog";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "../components/ui/select";
 import { Badge } from "../components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 import { toast } from "sonner";
 import { BadgeCheck, Edit2, Search } from "lucide-react";
 
 function StatCard({ label, value, hint, accent, testid }) {
   return (
-    <div className="rounded-2xl border border-stone-200 bg-white p-5" data-testid={testid}>
-      <p className="text-[11px] uppercase tracking-[0.22em] text-stone-500">{label}</p>
-      <p className={`font-serif-display text-4xl mt-2 ${accent || "text-foreground"}`}>{value}</p>
+    <div
+      className="rounded-2xl border border-stone-200 bg-white p-5"
+      data-testid={testid}
+    >
+      <p className="text-[11px] uppercase tracking-[0.22em] text-stone-500">
+        {label}
+      </p>
+      <p
+        className={`font-serif-display text-4xl mt-2 ${accent || "text-foreground"}`}
+      >
+        {value}
+      </p>
       {hint && <p className="mt-1 text-xs text-stone-500">{hint}</p>}
     </div>
   );
 }
 
-function PaymentMethodCards({ value, onChange, testidPrefix = "payment-method" }) {
+function PaymentMethodCards({
+  value,
+  onChange,
+  testidPrefix = "payment-method",
+}) {
   const options = [
     { id: "cash", label: "Cash", hint: "Collected at the counter" },
     { id: "online", label: "Online", hint: "UPI, card, or transfer" },
@@ -54,8 +89,12 @@ function PaymentMethodCards({ value, onChange, testidPrefix = "payment-method" }
             }`}
             data-testid={`${testidPrefix}-${option.id}`}
           >
-            <span className="block text-sm font-medium text-stone-900">{option.label}</span>
-            <span className="mt-1 block text-xs text-stone-500">{option.hint}</span>
+            <span className="block text-sm font-medium text-stone-900">
+              {option.label}
+            </span>
+            <span className="mt-1 block text-xs text-stone-500">
+              {option.hint}
+            </span>
           </button>
         );
       })}
@@ -75,7 +114,7 @@ export default function Collections() {
     () => [1, 7, 14, 30, 90, 180].filter((d) => d <= planMaxDays),
     [planMaxDays],
   );
-  const [days, setDays] = useState(Math.min(7, planMaxDays));
+  const [days, setDays] = useState(1);
   const [paidFilter, setPaidFilter] = useState("all");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
   const [serviceFilter, setServiceFilter] = useState("all");
@@ -95,8 +134,8 @@ export default function Collections() {
   const [pageSize] = useState(25);
 
   useEffect(() => {
-    if (!paidPlan && days !== 7) {
-      setDays(7);
+    if (!paidPlan && days !== 1) {
+      setDays(1);
     }
   }, [days, paidPlan]);
 
@@ -114,7 +153,9 @@ export default function Collections() {
         businessService.getServices(business.id).catch(() => []),
       ]);
       setData(collectionsData);
-      setServices((servicesData || []).filter((svc) => svc.is_active !== false));
+      setServices(
+        (servicesData || []).filter((svc) => svc.is_active !== false),
+      );
     } finally {
       setLoading(false);
     }
@@ -145,7 +186,9 @@ export default function Collections() {
       setEditingTicket(null);
       load();
     } catch (err) {
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+      toast.error(
+        formatApiErrorDetail(err.response?.data?.detail) || err.message,
+      );
     } finally {
       setUpdatingAmount(false);
     }
@@ -162,20 +205,31 @@ export default function Collections() {
     if (!paymentTicket || !paymentMethod) return;
     setUpdatingPayment(true);
     try {
-      await collectionsService.markAsPaid(business.id, paymentTicket.id, paymentMethod);
+      await collectionsService.markAsPaid(
+        business.id,
+        paymentTicket.id,
+        paymentMethod,
+      );
       toast.success(`Marked as paid via ${paymentMethod}`);
       setPaymentDialogOpen(false);
       setPaymentTicket(null);
       load();
     } catch (err) {
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+      toast.error(
+        formatApiErrorDetail(err.response?.data?.detail) || err.message,
+      );
     } finally {
       setUpdatingPayment(false);
     }
   };
 
   const totals = data?.totals || {
-    amount: 0, paid_amount: 0, unpaid_amount: 0, ticket_count: 0, paid_count: 0, unpaid_count: 0,
+    amount: 0,
+    paid_amount: 0,
+    unpaid_amount: 0,
+    ticket_count: 0,
+    paid_count: 0,
+    unpaid_count: 0,
   };
   const allRows = useMemo(() => data?.rows || [], [data]);
 
@@ -203,7 +257,7 @@ export default function Collections() {
   const endIndex = startIndex + pageSize;
   const paginatedRows = useMemo(
     () => filteredRows.slice(startIndex, endIndex),
-    [filteredRows, startIndex, endIndex]
+    [filteredRows, startIndex, endIndex],
   );
 
   // Group paginated rows by date for the grouped view
@@ -229,7 +283,8 @@ export default function Collections() {
 
   if (auth === null) return null;
   if (!business) {
-    if (businesses.length === 0) return <Navigate to="/dashboard/outlets" replace />;
+    if (businesses.length === 0)
+      return <Navigate to="/dashboard/outlets" replace />;
     return <Navigate to={`/dashboard/${businessId}/collections`} replace />;
   }
 
@@ -239,8 +294,12 @@ export default function Collections() {
       <main className="mx-auto max-w-6xl px-5 py-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.26em] text-primary">Collections</p>
-            <h1 className="font-serif-display text-4xl sm:text-5xl mt-2 leading-none">{business.business_name}</h1>
+            <p className="text-[11px] uppercase tracking-[0.26em] text-primary">
+              Collections
+            </p>
+            <h1 className="font-serif-display text-4xl sm:text-5xl mt-2 leading-none">
+              {business.business_name}
+            </h1>
             <p className="mt-2 text-stone-600 text-sm">
               {paidPlan
                 ? "Track what came in each day and filter down to the tickets behind it."
@@ -249,13 +308,21 @@ export default function Collections() {
           </div>
           <div className="flex flex-wrap gap-2">
             {paidPlan ? (
-              <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
-                <SelectTrigger className="h-10 w-[140px] rounded-full border-stone-300 bg-white" data-testid="collections-range">
+              <Select
+                value={String(days)}
+                onValueChange={(v) => setDays(Number(v))}
+              >
+                <SelectTrigger
+                  className="h-10 w-[140px] rounded-full border-stone-300 bg-white"
+                  data-testid="collections-range"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {rangeOptions.map((d) => (
-                    <SelectItem key={d} value={String(d)}>{d === 1 ? "Today" : `Last ${d} days`}</SelectItem>
+                    <SelectItem key={d} value={String(d)}>
+                      {d === 1 ? "Today" : `Last ${d} days`}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -269,7 +336,10 @@ export default function Collections() {
             )}
 
             <Select value={paidFilter} onValueChange={setPaidFilter}>
-              <SelectTrigger className="h-10 w-[140px] rounded-full border-stone-300 bg-white" data-testid="collections-paid-filter">
+              <SelectTrigger
+                className="h-10 w-[140px] rounded-full border-stone-300 bg-white"
+                data-testid="collections-paid-filter"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -279,8 +349,14 @@ export default function Collections() {
               </SelectContent>
             </Select>
 
-            <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
-              <SelectTrigger className="h-10 w-[150px] rounded-full border-stone-300 bg-white" data-testid="collections-method-filter">
+            <Select
+              value={paymentMethodFilter}
+              onValueChange={setPaymentMethodFilter}
+            >
+              <SelectTrigger
+                className="h-10 w-[150px] rounded-full border-stone-300 bg-white"
+                data-testid="collections-method-filter"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -291,13 +367,18 @@ export default function Collections() {
             </Select>
 
             <Select value={serviceFilter} onValueChange={setServiceFilter}>
-              <SelectTrigger className="h-10 w-[180px] rounded-full border-stone-300 bg-white" data-testid="collections-service-filter">
+              <SelectTrigger
+                className="h-10 w-[180px] rounded-full border-stone-300 bg-white"
+                data-testid="collections-service-filter"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All services</SelectItem>
                 {services.map((svc) => (
-                  <SelectItem key={svc.id} value={svc.id}>{svc.name}</SelectItem>
+                  <SelectItem key={svc.id} value={svc.id}>
+                    {svc.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -305,10 +386,14 @@ export default function Collections() {
         </div>
 
         {!paidPlan && (
-          <div className="mt-5 rounded-2xl border border-border bg-secondary px-5 py-4" data-testid="collections-upgrade-note">
+          <div
+            className="mt-5 rounded-2xl border border-border bg-secondary px-5 py-4"
+            data-testid="collections-upgrade-note"
+          >
             <p className="text-sm text-stone-700">
-              <span className="font-medium">{planLabel(auth?.user)} plan:</span> collections stay available for the last 7 days.
-              Upgrade to Premium or Premium Plus to unlock 14, 30, 90, and 180 day views.
+              <span className="font-medium">{planLabel(auth?.user)} plan:</span>{" "}
+              collections stay available for the last 7 days. Upgrade to Premium
+              or Premium Plus to unlock 14, 30, 90, and 180 day views.
             </p>
           </div>
         )}
@@ -370,7 +455,10 @@ export default function Collections() {
           </div>
         </div>
 
-        <div className="mt-4 rounded-2xl border border-stone-200 bg-white overflow-hidden" data-testid="collections-table">
+        <div
+          className="mt-4 rounded-2xl border border-stone-200 bg-white overflow-hidden"
+          data-testid="collections-table"
+        >
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -384,18 +472,28 @@ export default function Collections() {
             <TableBody>
               {groupedPaginatedRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-12 text-center text-stone-500">
-                    {searchQuery ? "No tickets match your search." : "No completed tickets match these filters yet."}
+                  <TableCell
+                    colSpan={5}
+                    className="py-12 text-center text-stone-500"
+                  >
+                    {searchQuery
+                      ? "No tickets match your search."
+                      : "No completed tickets match these filters yet."}
                   </TableCell>
                 </TableRow>
               ) : (
                 groupedPaginatedRows.map((group) => (
                   <Fragment key={group.date}>
                     <TableRow className="bg-stone-50/50 hover:bg-stone-50/50">
-                      <TableCell colSpan={5} className="py-2 pl-5 font-semibold text-stone-900 border-l-4 border-primary">
+                      <TableCell
+                        colSpan={5}
+                        className="py-2 pl-5 font-semibold text-stone-900 border-l-4 border-primary"
+                      >
                         <div className="flex items-center justify-between">
                           <FormattedDate date={group.date} />
-                          <span className="text-primary pr-5 text-sm font-bold">₹{group.total.toLocaleString("en-IN")} total</span>
+                          <span className="text-primary pr-5 text-sm font-bold">
+                            ₹{group.total.toLocaleString("en-IN")} total
+                          </span>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -403,14 +501,26 @@ export default function Collections() {
                       <TableRow key={row.id}>
                         <TableCell className="pl-5">
                           <div>
-                            <p className="font-medium text-stone-900">{row.customer_name}</p>
-                            <p className="text-xs text-stone-500">#{String(row.token_number).padStart(3, "0")}</p>
+                            <p className="font-medium text-stone-900">
+                              {row.customer_name}
+                            </p>
+                            <p className="text-xs text-stone-500">
+                              #{String(row.token_number).padStart(3, "0")}
+                            </p>
                           </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-1.5">
-                            {(row.service_names?.length ? row.service_names : row.service_name ? [row.service_name] : ["No service logged"]).map((name, index) => (
-                              <span key={`${row.id}-svc-${index}`} className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs text-stone-700">
+                            {(row.service_names?.length
+                              ? row.service_names
+                              : row.service_name
+                                ? [row.service_name]
+                                : ["No service logged"]
+                            ).map((name, index) => (
+                              <span
+                                key={`${row.id}-svc-${index}`}
+                                className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs text-stone-700"
+                              >
                                 {name}
                               </span>
                             ))}
@@ -419,7 +529,10 @@ export default function Collections() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-stone-900">
-                              ₹{Number(row.service_price || 0).toLocaleString("en-IN")}
+                              ₹
+                              {Number(row.service_price || 0).toLocaleString(
+                                "en-IN",
+                              )}
                             </span>
                             {!row.paid && (
                               <Button
@@ -480,7 +593,9 @@ export default function Collections() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between border-t border-stone-200 px-5 py-4">
               <div className="text-sm text-stone-500">
-                Showing {startIndex + 1}-{Math.min(endIndex, filteredRows.length)} of {filteredRows.length} tickets
+                Showing {startIndex + 1}-
+                {Math.min(endIndex, filteredRows.length)} of{" "}
+                {filteredRows.length} tickets
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -496,7 +611,11 @@ export default function Collections() {
                   {Array.from({ length: totalPages }, (_, i) => i + 1)
                     .filter((page) => {
                       // Show first, last, current, and adjacent pages
-                      if (page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1) {
+                      if (
+                        page === 1 ||
+                        page === totalPages ||
+                        Math.abs(page - currentPage) <= 1
+                      ) {
                         return true;
                       }
                       return false;
@@ -507,13 +626,17 @@ export default function Collections() {
                       const showEllipsis = prevPage && page - prevPage > 1;
                       return (
                         <div key={page} className="flex items-center gap-1">
-                          {showEllipsis && <span className="px-2 text-stone-400">...</span>}
+                          {showEllipsis && (
+                            <span className="px-2 text-stone-400">...</span>
+                          )}
                           <Button
                             variant={page === currentPage ? "default" : "ghost"}
                             size="sm"
                             onClick={() => setCurrentPage(page)}
                             className={`h-8 w-8 rounded-full p-0 ${
-                              page === currentPage ? "bg-primary text-white" : ""
+                              page === currentPage
+                                ? "bg-primary text-white"
+                                : ""
                             }`}
                           >
                             {page}
@@ -540,16 +663,23 @@ export default function Collections() {
         <Dialog open={amountDialogOpen} onOpenChange={setAmountDialogOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle className="font-serif-display text-2xl">Update amount</DialogTitle>
+              <DialogTitle className="font-serif-display text-2xl">
+                Update amount
+              </DialogTitle>
               <DialogDescription>
                 Change the service amount for this completed ticket.
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={updateAmount} className="space-y-4">
               <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
-                Token <span className="font-medium text-stone-900">#{String(editingTicket?.token_number || "").padStart(3, "0")}</span>
+                Token{" "}
+                <span className="font-medium text-stone-900">
+                  #{String(editingTicket?.token_number || "").padStart(3, "0")}
+                </span>
                 {" · "}
-                <span className="font-medium text-stone-900">{editingTicket?.customer_name}</span>
+                <span className="font-medium text-stone-900">
+                  {editingTicket?.customer_name}
+                </span>
               </div>
               <div>
                 <Label>New amount (₹)</Label>
@@ -582,18 +712,30 @@ export default function Collections() {
         <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle className="font-serif-display text-2xl">Mark as paid</DialogTitle>
+              <DialogTitle className="font-serif-display text-2xl">
+                Mark as paid
+              </DialogTitle>
               <DialogDescription>
                 Choose how this payment was received.
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={markAsPaid} className="space-y-4">
               <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
-                Token <span className="font-medium text-stone-900">#{String(paymentTicket?.token_number || "").padStart(3, "0")}</span>
+                Token{" "}
+                <span className="font-medium text-stone-900">
+                  #{String(paymentTicket?.token_number || "").padStart(3, "0")}
+                </span>
                 {" · "}
-                <span className="font-medium text-stone-900">{paymentTicket?.customer_name}</span>
+                <span className="font-medium text-stone-900">
+                  {paymentTicket?.customer_name}
+                </span>
                 {" · "}
-                <span className="font-medium text-stone-900">₹{Number(paymentTicket?.service_price || 0).toLocaleString("en-IN")}</span>
+                <span className="font-medium text-stone-900">
+                  ₹
+                  {Number(paymentTicket?.service_price || 0).toLocaleString(
+                    "en-IN",
+                  )}
+                </span>
               </div>
               <div>
                 <Label>Payment method</Label>

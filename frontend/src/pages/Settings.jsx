@@ -43,7 +43,8 @@ export default function Settings() {
 
   if (auth === null) return null;
   if (!business) {
-    if (businesses.length === 0) return <Navigate to="/dashboard/outlets" replace />;
+    if (businesses.length === 0)
+      return <Navigate to="/dashboard/outlets" replace />;
     return <Navigate to={`/dashboard/${businesses[0].id}/settings`} replace />;
   }
   if (!form) return null;
@@ -73,7 +74,9 @@ export default function Settings() {
       toast.success("Saved");
       navigate(`/dashboard/${business.id}`);
     } catch (err) {
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+      toast.error(
+        formatApiErrorDetail(err.response?.data?.detail) || err.message,
+      );
     } finally {
       setSaving(false);
     }
@@ -86,7 +89,9 @@ export default function Settings() {
       updateUser(data.user);
       toast.success(data.message || "Plan updated");
     } catch (err) {
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+      toast.error(
+        formatApiErrorDetail(err.response?.data?.detail) || err.message,
+      );
     } finally {
       setChangingPlan(null);
     }
@@ -96,33 +101,52 @@ export default function Settings() {
     <div className="min-h-screen bg-background">
       <DashboardHeader activeTab="settings" />
       <main className="mx-auto max-w-3xl px-5 py-10">
-        <Link to={`/dashboard/${business.id}`} className="text-sm text-stone-500 hover:text-stone-800 inline-flex items-center gap-1" data-testid="back-to-dashboard">
+        <Link
+          to={`/dashboard/${business.id}`}
+          className="text-sm text-stone-500 hover:text-stone-800 inline-flex items-center gap-1"
+          data-testid="back-to-dashboard"
+        >
           <ArrowLeft className="h-3.5 w-3.5" /> Back to queue
         </Link>
-        <h1 className="font-serif-display text-4xl mt-4">{business.business_name}</h1>
-        <p className="text-stone-600 text-sm mt-1">Keep your outlet details up to date.</p>
+        <h1 className="font-serif-display text-4xl mt-4">
+          {business.business_name}
+        </h1>
+        <p className="text-stone-600 text-sm mt-1">
+          Keep your outlet details up to date.
+        </p>
 
-        <section className="mt-8 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8" data-testid="plan-settings">
+        <section
+          className="mt-8 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8"
+          data-testid="plan-settings"
+        >
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-stone-400">Plan</p>
-              <h2 className="mt-1 font-serif-display text-2xl">{currentPlanLabel}</h2>
+              <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
+                Plan
+              </p>
+              <h2 className="mt-1 font-serif-display text-2xl">
+                {currentPlanLabel}
+              </h2>
               <div className="mt-2">
                 {expiryDate ? (
                   <div className="flex flex-col gap-1">
                     <p className="text-sm text-stone-600">
-                      {daysRemaining ?? 0} day{daysRemaining === 1 ? "" : "s"} left · Expires on:
+                      {daysRemaining ?? 0} day{daysRemaining === 1 ? "" : "s"}{" "}
+                      left · Expires on:
                     </p>
                     <FormattedDate date={expiryDate} className="text-sm" />
                   </div>
                 ) : (
-                  <p className="text-sm text-stone-600">Free plan does not expire.</p>
+                  <p className="text-sm text-stone-600">
+                    Free plan does not expire.
+                  </p>
                 )}
               </div>
               {pendingPlan ? (
                 <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-xs text-primary">
                   <Clock className="h-3.5 w-3.5" />
-                  Switches to {catalog[pendingPlan]?.label || pendingPlan} when this plan ends
+                  Switches to {catalog[pendingPlan]?.label || pendingPlan} when
+                  this plan ends
                 </p>
               ) : null}
             </div>
@@ -134,13 +158,18 @@ export default function Settings() {
               const isCurrent = currentPlan === plan;
               const isPending = pendingPlan === plan;
               return (
-                <div key={plan} className="rounded-xl border border-stone-200 p-4">
+                <div
+                  key={plan}
+                  className="rounded-xl border border-stone-200 p-4"
+                >
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-medium">{item?.label}</p>
-                    {isCurrent ? <Check className="h-4 w-4 text-success" /> : null}
+                    {isCurrent ? (
+                      <Check className="h-4 w-4 text-success" />
+                    ) : null}
                   </div>
                   <p className="mt-1 text-sm text-stone-500">
-                    ${(item?.price_monthly ?? 0)} / month
+                    ₹{item?.price_monthly ?? 0} / month
                   </p>
                   <Button
                     type="button"
@@ -156,7 +185,8 @@ export default function Settings() {
                         ? "Scheduled"
                         : changingPlan === plan
                           ? "Saving..."
-                          : planOrder.indexOf(plan) > planOrder.indexOf(currentPlan)
+                          : planOrder.indexOf(plan) >
+                              planOrder.indexOf(currentPlan)
                             ? "Upgrade"
                             : "Downgrade"}
                   </Button>
@@ -166,57 +196,112 @@ export default function Settings() {
           </div>
         </section>
 
-        <form onSubmit={save} className="mt-6 space-y-5 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8" data-testid="settings-form">
+        <form
+          onSubmit={save}
+          className="mt-6 space-y-5 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8"
+          data-testid="settings-form"
+        >
           <div className="grid gap-5 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Label>Business name</Label>
-              <Input className="mt-1.5 h-11" value={form.business_name}
-                onChange={(e) => set("business_name")(e.target.value)} data-testid="settings-name" />
+              <Input
+                className="mt-1.5 h-11"
+                value={form.business_name}
+                onChange={(e) => set("business_name")(e.target.value)}
+                data-testid="settings-name"
+              />
             </div>
             <div className="sm:col-span-2">
               <Label>Address</Label>
-              <Input className="mt-1.5 h-11" value={form.address}
-                onChange={(e) => set("address")(e.target.value)} data-testid="settings-address" />
+              <Input
+                className="mt-1.5 h-11"
+                value={form.address}
+                onChange={(e) => set("address")(e.target.value)}
+                data-testid="settings-address"
+              />
             </div>
             <div>
               <Label>City</Label>
-              <Input className="mt-1.5 h-11" value={form.city}
-                onChange={(e) => set("city")(e.target.value)} data-testid="settings-city" />
+              <Input
+                className="mt-1.5 h-11"
+                value={form.city}
+                onChange={(e) => set("city")(e.target.value)}
+                data-testid="settings-city"
+              />
             </div>
             <div>
               <Label>State</Label>
-              <Input className="mt-1.5 h-11" value={form.state}
-                onChange={(e) => set("state")(e.target.value)} data-testid="settings-state" />
+              <Input
+                className="mt-1.5 h-11"
+                value={form.state}
+                onChange={(e) => set("state")(e.target.value)}
+                data-testid="settings-state"
+              />
             </div>
             <div>
               <Label>Pincode</Label>
-              <Input className="mt-1.5 h-11" value={form.pincode}
-                onChange={(e) => set("pincode")(e.target.value)} data-testid="settings-pincode" />
+              <Input
+                className="mt-1.5 h-11"
+                value={form.pincode}
+                onChange={(e) => set("pincode")(e.target.value)}
+                data-testid="settings-pincode"
+              />
             </div>
             <div>
               <Label>Stations / chairs</Label>
-              <Input type="number" min="1" max={limits.max_stations} className="mt-1.5 h-11" value={form.total_chairs}
-                onChange={(e) => set("total_chairs")(e.target.value)} data-testid="settings-chairs" />
-              <p className="mt-1 text-xs text-stone-500">Up to {limits.max_stations} on your current plan.</p>
+              <Input
+                type="number"
+                min="1"
+                max={limits.max_stations}
+                className="mt-1.5 h-11"
+                value={form.total_chairs}
+                onChange={(e) => set("total_chairs")(e.target.value)}
+                data-testid="settings-chairs"
+              />
+              <p className="mt-1 text-xs text-stone-500">
+                Up to {limits.max_stations} on your current plan.
+              </p>
             </div>
             <div>
               <Label>Daily token limit</Label>
-              <Input type="number" min="1" max={limits.max_tokens_per_day} className="mt-1.5 h-11" value={form.token_limit}
-                onChange={(e) => set("token_limit")(e.target.value)} data-testid="settings-token-limit" />
-              <p className="mt-1 text-xs text-stone-500">Up to {limits.max_tokens_per_day} / day on your current plan.</p>
+              <Input
+                type="number"
+                min="1"
+                max={limits.max_tokens_per_day}
+                className="mt-1.5 h-11"
+                value={form.token_limit}
+                onChange={(e) => set("token_limit")(e.target.value)}
+                data-testid="settings-token-limit"
+              />
+              <p className="mt-1 text-xs text-stone-500">
+                Up to {limits.max_tokens_per_day} / day on your current plan.
+              </p>
             </div>
             <div className="sm:col-span-2">
               <Label>Station label</Label>
-              <Input className="mt-1.5 h-11" placeholder="e.g. Chair, Bay, Room" value={form.station_label}
-                onChange={(e) => set("station_label")(e.target.value)} data-testid="settings-station-label" />
-              <p className="mt-1 text-xs text-stone-500">How you address each service spot in the dashboard.</p>
+              <Input
+                className="mt-1.5 h-11"
+                placeholder="e.g. Chair, Bay, Room"
+                value={form.station_label}
+                onChange={(e) => set("station_label")(e.target.value)}
+                data-testid="settings-station-label"
+              />
+              <p className="mt-1 text-xs text-stone-500">
+                How you address each service spot in the dashboard.
+              </p>
             </div>
             <div className="sm:col-span-2 flex items-center justify-between rounded-xl border border-stone-200 px-4 py-3">
               <div>
                 <p className="text-sm font-medium">Accepting new guests</p>
-                <p className="text-xs text-stone-500">Turn off to pause the queue after last call.</p>
+                <p className="text-xs text-stone-500">
+                  Turn off to pause the queue after last call.
+                </p>
               </div>
-              <Switch checked={form.is_online} onCheckedChange={set("is_online")} data-testid="settings-online" />
+              <Switch
+                checked={form.is_online}
+                onCheckedChange={set("is_online")}
+                data-testid="settings-online"
+              />
             </div>
             <div className="sm:col-span-2">
               <Label htmlFor="offline-message">Offline message</Label>
@@ -230,14 +315,18 @@ export default function Settings() {
                 data-testid="settings-offline-message"
               />
               <p className="mt-1 text-xs text-stone-500">
-                Shown to customers on the join page and lobby TV when the queue is paused. {form.offline_message?.length || 0}/280
+                Shown to customers on the join page and lobby TV when the queue
+                is paused. {form.offline_message?.length || 0}/280
               </p>
             </div>
           </div>
 
-          <Button type="submit" disabled={saving}
+          <Button
+            type="submit"
+            disabled={saving}
             className="rounded-full bg-foreground hover:bg-foreground/90 text-white h-11 px-8 press"
-            data-testid="settings-save">
+            data-testid="settings-save"
+          >
             {saving ? "Saving…" : "Save changes"}
           </Button>
         </form>

@@ -263,21 +263,21 @@ export default function DashboardHeader({ activeTab = "queue" }) {
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
-                current && navigate(`/dashboard/${current.id}/services`)
-              }
-              disabled={!current}
-              data-testid="menu-services"
-            >
-              <Briefcase className="h-4 w-4 mr-2" /> Services
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() =>
                 current && navigate(`/dashboard/${current.id}/collections`)
               }
               disabled={!current}
               data-testid="menu-collections"
             >
               <Wallet className="h-4 w-4 mr-2" /> Collections
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() =>
+                current && navigate(`/dashboard/${current.id}/services`)
+              }
+              disabled={!current}
+              data-testid="menu-services"
+            >
+              <Briefcase className="h-4 w-4 mr-2" /> Services
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>

@@ -346,7 +346,9 @@ export default function AdminPanel() {
   const clearLockout = useCallback(
     async (email) => {
       try {
-        await api.delete(`/admin/security/lockouts/${encodeURIComponent(email)}`);
+        await api.delete(
+          `/admin/security/lockouts/${encodeURIComponent(email)}`,
+        );
         toast.success("Lockout cleared");
         loadData();
       } catch (err) {
@@ -1323,7 +1325,7 @@ export default function AdminPanel() {
                       </h3>
                       <p className="mt-1 text-xs text-stone-500">
                         {plan.price_monthly > 0
-                          ? `$${plan.price_monthly}/mo`
+                          ? `₹${plan.price_monthly}/mo`
                           : "Free"}
                       </p>
                     </div>
